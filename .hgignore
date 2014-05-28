@@ -1,0 +1,11 @@
+syntax: glob
+
+*.pyc
+
+*.aig
+*.blif
+*.i
+
+work/
+backup/
+
