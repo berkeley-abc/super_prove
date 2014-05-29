@@ -591,10 +591,10 @@ def read_file_quiet(fname=None):
     return
 
 def aigs_pp(op='push', typ='reparam'):
-    global gggggggg,init_initial_f_name
+    global hist,init_initial_f_name
     """ hist ia a sequence of types in {reparam, phase, initial, tempor}
     and the corresponding aigs are stored in numbered files
-    These are used to inmap the cex back to the origina. The unmaapping is done by """
+    These are used to unmap the cex back to the origina. The unmaapping is done by """
 ##    print hist
     if op == 'push':
         hist.append(typ)
@@ -3664,7 +3664,7 @@ def remove_const_pos(n=-1):
 
 def unmap_cex():
     """ aig before trim is put in reg-space and after trim in the &space
-        Before and after need to have same number of flops in order to reconcile
+        Before and after need to have same number of flops in order to do reconcile
         aigs list should be such that if before and after don't match in number of latches,
         then some operation changed the flops and we just update the aig with the new number
         reconcile leaves before aig in reg-space after cex has been updated so cex and aig
@@ -3677,15 +3677,19 @@ def unmap_cex():
         n = n_latches()
         abc('&get') #save the current aig in &-space
         print 'Number of PIs in cex = %d'%n_cex_pis()
-        typ = aigs_pp('pop')
+        typ = aigs_pp('pop') #puts new aig in reg-space
         print typ,
         ps()
         if typ == 'phase':
+            print 'before conversion'
+            run_command('testcex') #tests cex against aig in &-space
             typ2 =aigs_pp('pop') #gets the aig before phase
-            abc('phase -c')
+            abc('phase -c') # -c means update the current CEX derived for a new AIG after "phase"
+                             #to match the current AIG (the one before "phase") [default = no]
             print 'Number of PIs in cex = %d, Number of frames = %d'%(n_cex_pis(),cex_frame())
-            run_command('testcex -a')
-            hist = hist + [typ2]
+            print 'after conversion'
+            run_command('testcex -a') #-a means that we test against the aig in the reg-space
+            hist = hist + [typ2] # we do not want to change hist if phase or tempor was done
             continue
         if typ == 'tempor':
             typ2 = aigs_pp('pop') #gets the aig before tempor
