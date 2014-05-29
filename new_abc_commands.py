@@ -108,10 +108,8 @@ def replace_report_result(multi, write_cex=False):
         
         print >> stdout, "%d"%result
         print >> stdout, "b%d"%po
-        if write_cex:
-            stdout.flush()
-            pyabc.run_command('write_cex -a /dev/fd/%d'%stdout.fileno())
-            stdout.flush()
+	if write_cex:
+	    pyabc.run_command('write_cex -a /dev/fd/%d'%stdout.fileno())
         print >> stdout, "."
         
     def report_liveness_result(po, result):
@@ -227,7 +225,7 @@ def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=
     return proof_command_wrapper_internal(pf, category_name, command_name, change, multi, write_cex)
 
 def super_prove():
-    return par.sp(t=900, check_trace=True)
+    return par.sp(check_trace=True)
 
 proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_cex=True)
 proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0)
