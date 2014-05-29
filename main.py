@@ -78,8 +78,8 @@ def constraints():
             print("inductive constraints:")
             x('constr ')
 
-def help(s):
-    run_command('%s -h'%s)
+##def help(s):
+##    run_command('%s -h'%s)
 
 def strip():
     """Strip out each output of a multi-output example and write it

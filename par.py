@@ -3718,9 +3718,12 @@ def unmap_cex():
 
 """ _______________________running regressions ________________________"""
 
-def run(cmd='super_prove',ex='L',tag=None,t=900):
-    regression.run(cmd,ex,tag,None,t)
-    
+##def run(cmd='super_prove',ex,tag=None,t=900):
+##    regression.run(cmd,ex,tag,None,t)
+
+"""
+to see arguments of regression.run, do help('regression.run' or any function)
+"""
 """
 cmds can be "super_prove" "multi_prove" "simple" "simple_sat" "simple_bip" "simple_live"
 
@@ -3754,15 +3757,18 @@ def sp(n=0,t=2001,check_trace=False):
         res = unmap_cex()
         result1 = result[1]+ res
         result = ['SAT'] + result1
-        report_cex() #this writes the unmapped cex into a cex file called init_initial_f_name_cex.status
+        report_cex(1) #this writes the unmapped cex into a cex file called init_initial_f_name_cex.status
     report_bmc_depth(max(max_bmc,n_bmc_frames()))
     return result
 
 def mp():
     multi_prove_iter()
 
-def report_cex():
-    abc('write_status %s_cex.status'%init_initial_f_name)
+def report_cex(stdout = 0):
+    if stdout:
+        abc('write_cex /dev/stdout')
+    else:
+        abc('write_cex %s.cex'%init_initial_f_name)
 
 def sumsize(L):
     d = count_less(L,0) #undecided L=-1 means undecided, L=0 means unsat, L=1 means sat
