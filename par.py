@@ -444,7 +444,7 @@ def set_engines(N=0):
         reachs = [24] #REACHY REACHX
         pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
         intrps = [23,1] #Interp_m INTERPOLATION
-        bmcs = allbmcs
+        bmcs = allbmcs   #allbmcs = [9,30,2,31]
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
             intrps = allintrps = [23] #Interp_m
@@ -3757,7 +3757,7 @@ def sp(n=0,t=2001,check_trace=False):
         res = unmap_cex()
         result1 = result[1]+ res
         result = ['SAT'] + result1
-        report_cex(1) #this writes the unmapped cex into a cex file called init_initial_f_name_cex.status
+        report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
     report_bmc_depth(max(max_bmc,n_bmc_frames()))
     return result
 

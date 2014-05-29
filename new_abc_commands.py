@@ -100,7 +100,7 @@ def print_aiger_result(args):
 pyabc.add_abc_command(print_aiger_result, "ZPython", "/print_aiger_result", 0)
 
 @contextmanager
-def replace_report_result(multi):
+def replace_report_result(multi, write_cex=False):
     
     def report_result(po, result):
         
@@ -108,6 +108,10 @@ def replace_report_result(multi):
         
         print >> stdout, "%d"%result
         print >> stdout, "b%d"%po
+        if write_cex:
+            stdout.flush()
+            pyabc.run_command('write_cex -a /dev/fd/%d'%stdout.fileno())
+            stdout.flush()
         print >> stdout, "."
         
     def report_liveness_result(po, result):
@@ -142,7 +146,7 @@ def replace_report_result(multi):
             #~ par.report_liveness_result = report_liveness_result
             par.report_bmc_depth = old_report_bmc_depth
 
-def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False):
+def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False, write_cex=False):
 
     def wrapper(argv):
         
@@ -166,7 +170,7 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
             
         aig_filename = os.path.abspath(args[1])
 
-        with replace_report_result(multi):
+        with replace_report_result(multi, write_cex):
 
             if options.redirect:
                 pyabc.run_command('/pushredirect %s'%options.redirect)
@@ -216,13 +220,16 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
     
     pyabc.add_abc_command(wrapper, category_name, command_name, change)
 
-def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=False):
+def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=False, write_cex=False):
     def pf(aig_filename):
         par.read_file_quiet(aig_filename)
         return prooffunc()
-    return proof_command_wrapper_internal(pf, category_name, command_name, change, multi)
+    return proof_command_wrapper_internal(pf, category_name, command_name, change, multi, write_cex)
 
-proof_command_wrapper(par.sp,  'HWMCC13', '/super_prove_aiger',  0)
+def super_prove():
+    return par.sp(t=900, check_trace=True)
+
+proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_cex=True)
 proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0)
 proof_command_wrapper(par.simple_bip,  'HWMCC13', '/simple_bip_aiger',  0)
 proof_command_wrapper(par.simple_sat,  'HWMCC13', '/simple_sat_aiger',  0)
