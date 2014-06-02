@@ -127,14 +127,14 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'For_Retime','REACHP','REACHN','PDR_sd','prove_part_2',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
-           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat', 'iprove']
+           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat', 'iprove','BMC_J2']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
 #16.prove_part_3, 17.verify, 18.sleep, 19.PDRMm, 20.prove_part_1,
 #21.run_parallel, 22.INTRP_bwd, 23. Interp_m 24. REACHY 25. REACHYc 26. Rarity Sim 27. simplify
 #28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a 33. extract 34. pdr_abstract
-#35 par_scorr, 36. dsat, 37. iprove
+#35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2
 win_list = [(0,.1),(1,.1),(2,.1),(3,.1),(4,.1),(5,-1),(6,-1),(7,.1)]
 FUNCS = ["(pyabc_split.defer(pdr)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,pdr -vt=%f'%t))",
@@ -187,6 +187,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(pscorr)(t))",
          "(pyabc_split.defer(dsat)(t))",
          "(pyabc_split.defer(iprove)(t))"
+         "(pyabc_split.defer(bmc_j2)(t))"
          ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
@@ -199,10 +200,10 @@ reachs = [24]
 allpdrs = [34,7,14,19,0]
 allpdrs2 = [34,7,14,19,0]
 pdrs = [34,7,14,0]
-allbmcs = [9,30,2,31]
+allbmcs = [9,30,2,31,38]
 exactbmcs = [9,2,31]
 exbmcs = [2,9,31]
-bmcs = [9,30]
+bmcs = [9,30,38]
 bmcs1 = [9]
 allintrps = [23,1,22]
 bestintrps = [23]
@@ -433,23 +434,23 @@ def set_engines(N=0):
         reachs = [24] #REACHY
         allpdrs = pdrs = [7,34,14] #PDRM pdr_abstract PDR_seed
         intrps = [23,1] #Interp_m
-        allbmcs = bmcs = [9,30,31] #BMC3 bmc3 -S 
+        allbmcs = bmcs = [9,30,38, 31] #BMC3 bmc3 -S bmc_j bm2
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
             intrps = allintrps = [23] #Interp_m
-            bmcs = allbmcs = [2]
+            bmcs = allbmcs = [9,30,38]
         sims = [26] #Rarity_Sim
         slps = [18] #sleep
     else:
         reachs = [24] #REACHY REACHX
         pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
         intrps = [23,1] #Interp_m INTERPOLATION
-        bmcs = allbmcs   #allbmcs = [9,30,2,31]
+        bmcs = allbmcs   #allbmcs = [9,30,2,31,38]
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
             intrps = allintrps = [23] #Interp_m
             reachs = [24] #REACHY
-            bmcs = [9,30] #BMC3 bmc3 -S 
+            bmcs = [9,30,38] #BMC3 bmc3 -S 
         sims = [26] #Rarity_Sim
         slps = [18] #sleep
         
