@@ -2269,7 +2269,7 @@ def inferior_size():
 def process_status(status):
     """ if there are no FF, the problem is combinational and we still have to check if UNSAT"""
     if n_latches() == 0:
-        return check_sat(20)
+        return check_sat()
     return status
     
 def get_status():
@@ -2278,7 +2278,7 @@ def get_status():
     python code. -1,0,1 => 3,0,2
     """
     if n_latches() == 0:
-        return check_sat(20)
+        return check_sat()
     status = prob_status() #interrogates ABC for the current status of the problem.
     # 0 = SAT i.e. Sat_reg = 0 so does not have to be changed.
     if status == 1:
@@ -2698,7 +2698,7 @@ def pre_simp(n=0,N=0):
         return [status, smp_trace,hist]
     last_simp = [n_pis(),n_pos(),n_latches(),n_ands()]
     if n_ands() > 0:
-        status = check_sat(20)
+        status = check_sat()
     else:
         status = Undecided
     return [status,smp_trace,hist]
@@ -6464,6 +6464,11 @@ def remove_proved_pos(lst):
     remove_const_pos(0)
 
 
+def bmc_j2(t=2001):
+    cmd = 'bmc3 -C 10000 -J 2 -D 10000'
+    abc(cmd)
+    return RESULT[get_status()]
+
         
 def bmc_j(t=2001):
     """ finds a cex in t seconds starting at 2*N where N is depth of bmc -T 1"""
@@ -6472,13 +6477,14 @@ def bmc_j(t=2001):
     abc('bmc3 -T %0.2f'%tt)
     if is_sat():
 ##        print 'cex found in %0.2f sec at frame %d'%((time.time()-x),cex_frame())
-        return get_status()
+        return RESULT[get_status()]
 ##    abc('bmc3 -T 1')
     N = n_bmc_frames()
     N = max(1,N)
 ##    print bmc_depth()
 ##    abc('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max(3,max_bmc))))
-    cmd = 'bmc3 -J 2 -D 4000 -C 1000000 -T %f -S %d'%(t,2*N)
+##    cmd = 'bmc3 -J 2 -D 4000 -C 1000000 -T %f -S %d'%(t,2*N)
+    cmd = 'bmc3 -C 2000 -J %d'%(2*N+2)
 ##    print cmd
     abc(cmd)
 ##    if is_sat():
