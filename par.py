@@ -186,7 +186,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(pdra)(t))",
          "(pyabc_split.defer(pscorr)(t))",
          "(pyabc_split.defer(dsat)(t))",
-         "(pyabc_split.defer(iprove)(t))"
+         "(pyabc_split.defer(iprove)(t))",
          "(pyabc_split.defer(bmc_j2)(t))"
          ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
