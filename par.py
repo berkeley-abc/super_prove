@@ -6465,13 +6465,13 @@ def remove_proved_pos(lst):
     remove_const_pos(0)
 
 
-def bmc_j2(t=2001):
-    cmd = 'bmc3 -C 10000 -J 2 -D 10000'
+def bmc_j(t=2001):
+    cmd = 'bmc3 -C 5000 -J 2 -D 5000'
     abc(cmd)
     return RESULT[get_status()]
 
         
-def bmc_j(t=2001):
+def bmc_j2(t=2001):
     """ finds a cex in t seconds starting at 2*N where N is depth of bmc -T 1"""
     x = time.time()
     tt = min(5,max(1,.05*t))
@@ -7868,7 +7868,8 @@ def abstracta(if_bip=True):
             funcs = [eval('(pyabc_split.defer(vta_abs)(t-2))')]
     funcs = funcs + [eval('(pyabc_split.defer(monitor_and_prove)())')]
 ##    J = [34,30]
-    J = pdrs[:1]+bmcs[:1] #just use one pdr and one bmc here.
+##    J = pdrs[:1]+bmcs[:1] #just use one pdr and one bmc here.
+    J = pdrs[:1]+[30] #rkb
 ##    J = pdrs+bmcs
 ##    J = modify_methods(J,2)
     funcs = funcs + create_funcs(J,1000)
