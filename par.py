@@ -188,7 +188,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(dsat)(t))",
          "(pyabc_split.defer(iprove)(t))",
          "(pyabc_split.defer(bmc_j2)(t))"
-         ]
+          ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
 
@@ -209,11 +209,11 @@ allintrps = [23,1,22]
 bestintrps = [23]
 ##intrps = [23,1]
 intrps = [23,1] #putting ,imc-sofa first for now to test
+intrps = [23] #rkb
 allsims = [26,3]
 sims = [26] 
 allslps = [18]
 slps = [18]
-imc1 = [1]
 pre = [5]
 combs = [36,37]
 
@@ -434,6 +434,7 @@ def set_engines(N=0):
         reachs = [24] #REACHY
         allpdrs = pdrs = [7,34,14] #PDRM pdr_abstract PDR_seed
         intrps = [23,1] #Interp_m
+        intrps = [23] #rkb
         allbmcs = bmcs = [9,30,38, 31] #BMC3 bmc3 -S bmc_j bm2
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
@@ -445,6 +446,7 @@ def set_engines(N=0):
         reachs = [24] #REACHY REACHX
         pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
         intrps = [23,1] #Interp_m INTERPOLATION
+        intrps = [23] #rkb
         bmcs = allbmcs   #allbmcs = [9,30,2,31,38]
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
@@ -5474,7 +5476,7 @@ def reachx(t=2001):
 
 def reachy(t=10001):
     x = time.clock()
-    abc('orpos;unfold2;&get;&reachy -T %d'%t)
+    abc('orpos;unfold2;fold2;&get;&reachy -T %d'%t)
 ##    print 'reachy done in time = %f'%(time.clock() - x)
     return get_status()
     
@@ -6611,7 +6613,7 @@ def bmc3(t=2001):
     return RESULT[get_status()]
 
 def intrpm(t=2001):
-    abc('int -C 1000000 -F 10000 -K 1 -T %d'%t)
+    abc('int -T %d'%t)
     print 'intrpm: status = %d'%get_status() 
     return RESULT[get_status()]
 
@@ -7869,7 +7871,7 @@ def abstracta(if_bip=True):
     funcs = funcs + [eval('(pyabc_split.defer(monitor_and_prove)())')]
 ##    J = [34,30]
 ##    J = pdrs[:1]+bmcs[:1] #just use one pdr and one bmc here.
-    J = pdrs[:1]+[30] #rkb
+    J = pdrs[:1]+[9,30] #rkb
 ##    J = pdrs+bmcs
 ##    J = modify_methods(J,2)
     funcs = funcs + create_funcs(J,1000)
