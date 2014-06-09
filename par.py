@@ -2126,6 +2126,28 @@ def speculate(t=0):
         write_file('spec')
         return Undecided_reduction
 
+def sst(t=2000):
+    '''aimple SAAT which writs out an unmapped cex to a file for reporting to hwmcc'''
+    y = time.time()
+    J = allbmcs+pdrs+sims+[5] #5 is pre_simp
+    funcs = create_funcs(J,t)
+    mtds =sublist(methods,J)
+    print mtds
+    fork_last(funcs,mtds)
+    result = get_status()
+    if result > Unsat:
+        write_file('smp')
+        result = verify(slps+allbmcs+pdrs+sims,t)
+        result = get_status()
+    if result == Sat: #rkb
+        res = unmap_cex()
+##        result = ['SAT'] + result1
+        report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
+    print 'Time for simple_sat = %0.2f'%(time.time()-y)
+    report_bmc_depth(max(max_bmc,n_bmc_frames()))
+    return [RESULT[result]] + ['sst']
+
+
 def simple_sat(t=2001):
     """
     aimed at trying harder to prove SAT
@@ -2133,9 +2155,9 @@ def simple_sat(t=2001):
     y = time.time()
     bmcs2 = [9,31]
     bmcs2 = [9,30]
-    J = allbmcs+pdrs+sims+[5]
+    J = allbmcs+pdrs+sims+[5] #5 is pre_simp
 ##    J = modify_methods(J)
-##    J = [14,2,7,9,30,31,26,5] #5 is pre_simp
+##    J = [14,2,7,9,30,31,26,5] 
     funcs = create_funcs(J,t)
     mtds =sublist(methods,J)
     print mtds
