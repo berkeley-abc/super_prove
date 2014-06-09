@@ -127,14 +127,14 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'For_Retime','REACHP','REACHN','PDR_sd','prove_part_2',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
-           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat', 'iprove','BMC_J2']
+           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat', 'iprove','BMC_J2','aplitprove']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
 #16.prove_part_3, 17.verify, 18.sleep, 19.PDRMm, 20.prove_part_1,
 #21.run_parallel, 22.INTRP_bwd, 23. Interp_m 24. REACHY 25. REACHYc 26. Rarity Sim 27. simplify
 #28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a 33. extract 34. pdr_abstract
-#35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2
+#35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2 39. splitprove
 win_list = [(0,.1),(1,.1),(2,.1),(3,.1),(4,.1),(5,-1),(6,-1),(7,.1)]
 FUNCS = ["(pyabc_split.defer(pdr)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,pdr -vt=%f'%t))",
@@ -187,7 +187,8 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(pscorr)(t))",
          "(pyabc_split.defer(dsat)(t))",
          "(pyabc_split.defer(iprove)(t))",
-         "(pyabc_split.defer(bmc_j2)(t))"
+         "(pyabc_split.defer(bmc_j2)(t))",
+         "(pyabc_split.defer(splitprove)(t))"
           ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
@@ -215,7 +216,7 @@ sims = [26]
 allslps = [18]
 slps = [18]
 pre = [5]
-combs = [36,37]
+combs = [36,37,39]
 
 JVprove = [7,23,24]
 JV = pdrs+intrps+bmcs+sims #sets what is run in parallel '17. verify' above
@@ -333,6 +334,9 @@ def iprove(t=100):
 
 def dsat(t=100):
     abc('dsat')
+
+def splitprove(t=900):
+    run_command('&get;&splitprove -v -P 30 -L 5 -T 15')
 
 def n_real_inputs():
     """This gives the number of 'real' inputs. This is determined by trimming away inputs that
@@ -574,9 +578,11 @@ def read_file_quiet(fname=None):
     if s[-4:] == '.aig':
 ##        run_command('&r %s;&put'%s) #warning: changes names to generic ones.
         run_command('r %s'%s)
+        run_command('logic;undc;st')
         run_command('zero')
     else: #this is a blif file
         run_command('r %s'%s)
+        run_command('logic,undc')
         abc('st;&get;&put') #changes names to generic ones for doing cec later.
         run_command('zero;w %s.aig'%f_name)
     set_globals()
@@ -2516,13 +2522,19 @@ def check_sat(t=2001):
     (m,result) = fork_last(F,mtds) #FORK here
 ##    print '%s: '%mtds[m],
 ##    smp_trace = smp_trace + ['%s'%mtds[m]]
-    if is_sat():
-        abc('&put')
+    res = prob_status()
+    if res == 0: #sat
+##    if is_sat():
+##        abc('&put')
         if n_pos() == 1:
+            abc('&put')
             return Sat_true
         else:
+            abc('&put')
             return Undecided_no_reduction #some POs could be unsat.
-    elif is_unsat():
+##    elif is_unsat():
+    elif res == 1: #unsat
+        abc('&put')
         return Unsat
     else:
         abc('&put') #restore
