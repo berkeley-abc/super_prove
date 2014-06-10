@@ -179,12 +179,6 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
                 pyabc.run_command('/pushdtemp')
                 
             try:
-                for d in os.environ['PATH'].split(':'):
-                    bip = os.path.join(d, 'bip')
-                    if os.path.exists(bip):
-                        pyabc.run_command("load_plugin %s Bip"%bip)
-                        break
-
                 basename = os.path.basename( aig_filename )
                 shutil.copyfile(aig_filename, basename)
                 aig_filename = basename

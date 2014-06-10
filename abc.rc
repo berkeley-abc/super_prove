@@ -1,3 +1,5 @@
+python -c 'import new_abc_commands'
+
 # global parameters
 set check         # checks intermediate networks
 #set checkfio      # prints warnings when fanins/fanouts are duplicated
@@ -19,13 +21,6 @@ set capowin MetaPl-Capo10.1-Win32.exe
 set capounix MetaPl-Capo10.1
 set gnuplotwin wgnuplot.exe
 set gnuplotunix gnuplot
-
-# Niklas Een's commands
-#load_plugin C:\_projects\abc\lib\bip_win.exe "BIP"
-load_plugin /hd/common/pyabc/bip "BIP"
-
-# reachx
-python -c "import reachx_cmd"
 
 # standard aliases
 alias hi history

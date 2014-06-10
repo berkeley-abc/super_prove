@@ -17,8 +17,17 @@ from  pyabc_split import *
 # change
 
 
-#x('source ../../abc.rc')
-abc_common.x('source abc.rc')
+# source abc.rc if not in HWMCC mode
+if 'ABC_PYTHON_ABC_RC' not in os.environ:
+    abc_common.x('source abc.rc')
+
+# add Bip commands
+for d in os.environ['PATH'].split(':'):
+    bip = os.path.join(d, 'bip')
+    if os.path.exists(bip):
+        pyabc.run_command("load_plugin %s Bip"%bip)
+        break
+
 
 def minus(L1,L2):
     out = []
