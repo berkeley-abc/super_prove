@@ -7,10 +7,14 @@ import time
 import math
 import main
 import filecmp
-import regression
 import random
 import operator
 
+try:
+    import regression
+except:
+    pass
+    
 global G_C,G_T,latches_before_abs,latches_before_pba,n_pos_before,x_factor,methods,last_winner
 global last_cex,JV,JP, cex_list,max_bmc, last_cx, pord_on, trim_allowed, temp_dec, abs_ratio, ifbip
 global if_no_bip, gabs, gla, sec_options,last_gasp_time, abs_ref_time, bmcs1, total_spec_refine_time
@@ -204,7 +208,7 @@ pdrs = [34,7,14,0]
 allbmcs = [9,30,2,31,38]
 exactbmcs = [9,2,31]
 exbmcs = [2,9,31]
-bmcs = [9,30,38]
+bmcs = [9,30,31,2,38]
 bmcs1 = [9]
 allintrps = [23,1,22]
 bestintrps = [23]
@@ -2193,6 +2197,8 @@ def simple(t=10000,no_simp=0):
     if not no_simp:
         prove_part_1()
         if is_sat():
+            unmap_cex()
+            report_cex(1)
             return ['SAT']+['pre_simp']
         if is_unsat():
             return ['UNSAT']+['pre_simp']
@@ -2202,6 +2208,9 @@ def simple(t=10000,no_simp=0):
     J = slps+sims+allbmcs+allpdrs+intrps
     J = modify_methods(J)
     result = verify(J,t)
+    if is_sat():
+        unmap_cex()
+        report_cex(1)
 ##    add_pord('%s by %s'%(result[0],result[1])
     return [RESULT[result[0]]] + [result[1]]
 
