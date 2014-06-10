@@ -229,12 +229,12 @@ proof_command_wrapper(par.mp,  'HWMCC13', '/multi_prove_aiger',  0, multi=True)
 
 def simple_liveness_prooffunc(aig_filename):
     
-    import niklas
+    import liveness
     from pyaig import utils
 
     def simplify(aiger_in, aiger_out):
         
-        with niklas.temp_file_names(2, suffix='.aig') as tmp:
+        with liveness.temp_file_names(2, suffix='.aig') as tmp:
 
             saved = utils.save_po_info(aiger_in, tmp[0])
             
@@ -262,7 +262,7 @@ def simple_liveness_prooffunc(aig_filename):
         return False
 
     try:
-        niklas.run_niklas_multi(aig_filename, simplify=simplify, report_result=report_result)
+        liveness.run_niklas_multi(aig_filename, simplify=simplify, report_result=report_result)
     except:
         import traceback
         traceback.print_exc()
