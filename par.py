@@ -145,7 +145,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(intrp)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,imc -vt=%f'%(t)))",
 ##         "(pyabc_split.defer(abc)('&get;,imc-sofa -vt=%f'%(t)))",
-         "(pyabc_split.defer(bmc)(t))",
+         "(pyabc_split.defer(bmc)(t-40))", #rkb  -40 istemp change for hwmcc14 depth bound competition
 ##         "(pyabc_split.defer(abc)('&get;,bmc -vt=%f'%t))",
          "(pyabc_split.defer(simulate)(t))",
          "(pyabc_split.defer(reachx)(t))",
@@ -2130,6 +2130,7 @@ def speculate(t=0):
         write_file('spec')
         return Undecided_reduction
 
+
 def sst(t=2000):
     '''aimple SAAT which writs out an unmapped cex to a file for reporting to hwmcc'''
     y = time.time()
@@ -2174,22 +2175,70 @@ def simple_sat(t=2001):
     report_bmc_depth(max(max_bmc,n_bmc_frames()))
     return [RESULT[result[0]]] + [result[1]]
 
-def super_deep(t=2001):
+def spd(t=900):
     """
-    aimed at finding the deepest valid depth
+    parallel super_deep
+    tries bmcs both before and after simplify
     """
-    y = time.time()
-    rel = prs(1,1)
-    J = exactbmcs
-    funcs = create_funcs(J,t)
-    mtds =sublist(methods,J)
+    y=time.time()
+    funcs = create_funcs([18],898)
+    funcs = funcs + [eval('(pyabc_split.defer(super_deep_i)(t))')]
+    funcs = funcs + [eval('(pyabc_split.defer(super_deep_s)(t))')]
+    mtds = ['sleep','initial','after_simp']
     print mtds
     for i,res in pyabc_split.abc_split_all(funcs):
-        print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-y))
+        print i,res
+        if i == 0:
+            break
+        print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],res,(time.time()-y))
+        set_max_bmc(res)
+        report_bmc_depth(max_bmc)
+    return max_bmc
+   
+
+def super_deep_i(t=900):
+    """
+    aimed at finding the deepest valid depth starting from the initial aig
+    """
+    y = z = time.time()
+    J = exactbmcs
+    t = 890
+    funcs = create_funcs([18],890)
+    funcs = funcs + create_funcs(J,t-50)
+    mtds =['sleep'] + sublist(methods,J)
+    print mtds
+    for i,res in pyabc_split.abc_split_all(funcs):
+        if i == 0:
+            break
+        print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
         set_max_bmc(n_bmc_frames())
-##        print max_bmc
-    print 'Time for super_deep = %0.2f'%(time.time()-y)
-    print 'BMC depth = %d'%(max_bmc) 
+    print 'Time for super_deep_i = %0.2f'%(time.time()-z)
+    print 'BMC depth initial = %d'%(max_bmc)
+    report_bmc_depth(max_bmc)
+    return max_bmc
+
+def super_deep_s(t=900):
+    """
+    aimed at finding the deepest valid depth - simplifies first
+    """
+    z = y = time.time() #make it seem like it started 15 sec before actually
+    rel = prs(1,1)
+    time_used = time.time() - y
+    J = exactbmcs
+    t = max(0,890-time_used) #time left
+    funcs = create_funcs([18],t)
+    funcs = funcs + create_funcs(J,t-50)
+    mtds =['sleep'] + sublist(methods,J)
+    print mtds
+    for i,res in pyabc_split.abc_split_all(funcs):
+        if i == 0:
+            break
+        print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
+        set_max_bmc(n_bmc_frames())
+    print 'Time for super_deep_s = %0.2f'%(time.time()-z)
+    print 'BMC depth simplified = %d'%(max_bmc)
+    report_bmc_depth(max_bmc)
+    return max_bmc
 
 def simple(t=10000,no_simp=0):
     y = time.time()
@@ -6570,12 +6619,12 @@ def pdrmm(t):
     return RESULT[get_status()]
 
 def bmc2(t):
-   abc('bmc2 -C 1000000 -T %f'%t)
+   abc('bmc2 -T %d'%t)
    return RESULT[get_status()]
 
 def bmc(t=2001):
 ##    abc('&get; ,bmc -vt=%d'%t)
-    abc('&get; ,bmc -timeout=%d -vt=%d'%(t,t))
+    abc('&get; ,bmc -timeout=%0.2f -vt=%0.2f'%(t,t))
     return RESULT[get_status()]
 
 def intrp(t=2001):
@@ -6652,7 +6701,7 @@ def sim3az(t=2001,gt=10,C=1000,W=5,N=0):
     return L,s
     
 def bmc3(t=2001):
-    abc('bmc3 -C 1000000 -T %d'%t)
+    abc('bmc3  -T %d'%t)
     return RESULT[get_status()]
 
 def intrpm(t=2001):
