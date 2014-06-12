@@ -100,6 +100,17 @@ def print_aiger_result(args):
 pyabc.add_abc_command(print_aiger_result, "ZPython", "/print_aiger_result", 0)
 
 @contextmanager
+def temp_filename():
+
+    with tempfile.NamedTemporaryFile(delete=False) as file:
+        name = file.name
+
+    try:
+        yield name
+    finally:
+        os.unlink(name)
+
+@contextmanager
 def replace_report_result(multi, write_cex=False):
     
     def report_result(po, result):
@@ -108,8 +119,13 @@ def replace_report_result(multi, write_cex=False):
         
         print >> stdout, "%d"%result
         print >> stdout, "b%d"%po
-	if write_cex:
-	    pyabc.run_command('write_cex -a /dev/fd/%d'%stdout.fileno())
+
+        if write_cex:
+            with temp_filename() as name:
+                pyabc.run_command('write_cex -a %s'%name)
+                with open(name, 'r') as f:
+                    stdout.write(f.read())
+                        
         print >> stdout, "."
         
     def report_liveness_result(po, result):
