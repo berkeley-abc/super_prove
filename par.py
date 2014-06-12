@@ -131,7 +131,8 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'For_Retime','REACHP','REACHN','PDR_sd','prove_part_2',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
-           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat', 'iprove','BMC_J2','aplitprove']
+           'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
+           'iprove','BMC_J2','aplitprove']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
@@ -396,7 +397,7 @@ def set_engines(N=0):
 ##    #for HWMCC we want to set N = 8
 ##    N = 8
     if N == 0:
-        N = n_proc = 1+os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
+        N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
 ##        N = n_proc = 8 ### simulate 4 processors for HWMCC - turn this off a hwmcc.
     else:
         n_proc = N
@@ -443,7 +444,7 @@ def set_engines(N=0):
         allpdrs = pdrs = [7,34,14] #PDRM pdr_abstract PDR_seed
         intrps = [23,1] #Interp_m
         intrps = [23] #rkb
-        allbmcs = bmcs = [9,30,38, 31] #BMC3 bmc3 -S bmc_j bm2
+        allbmcs = bmcs = [9,30,2] #BMC3 bmc3 -S bmc_j bmc2
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
             intrps = allintrps = [23] #Interp_m
