@@ -132,14 +132,14 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
            'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
-           'iprove','BMC_J2','aplitprove']
+           'iprove','BMC_J2','aplitprove','pdrm_exact']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
 #16.prove_part_3, 17.verify, 18.sleep, 19.PDRMm, 20.prove_part_1,
 #21.run_parallel, 22.INTRP_bwd, 23. Interp_m 24. REACHY 25. REACHYc 26. Rarity Sim 27. simplify
 #28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a 33. extract 34. pdr_abstract
-#35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2 39. splitprove
+#35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2 39. splitprove 40. pdrm_exact
 win_list = [(0,.1),(1,.1),(2,.1),(3,.1),(4,.1),(5,-1),(6,-1),(7,.1)]
 FUNCS = ["(pyabc_split.defer(pdr)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,pdr -vt=%f'%t))",
@@ -193,7 +193,8 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(dsat)(t))",
          "(pyabc_split.defer(iprove)(t))",
          "(pyabc_split.defer(bmc_j2)(t))",
-         "(pyabc_split.defer(splitprove)(t))"
+         "(pyabc_split.defer(splitprove)(t))",
+         "(pyabc_split.defer(pdrm_exact)(t))"
           ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
@@ -2208,7 +2209,7 @@ def super_deep_i(t=900):
     aimed at finding the deepest valid depth starting from the initial aig
     """
     y = z = time.time()
-    J = exactbmcs
+    J = exactbmcs +[40]
     if n_latches() < 200:
         J = J + [24]
     t = 890
@@ -2238,7 +2239,7 @@ def super_deep_s(t=900):
     z = y = time.time() #make it seem like it started 15 sec before actually
     rel = prs(1,1)
     time_used = time.time() - y
-    J = exactbmcs
+    J = exactbmcs +[40]
     if n_latches() < 200:
         J = J + [24]
     t = max(0,890-time_used) #time left
@@ -6633,6 +6634,10 @@ def pdra(t=2001):
 
 def pdrm(t=2001):
     abc('pdr -C 0 -T %f'%t)
+    return RESULT[get_status()]
+
+def pdrm_exact(t=2001):
+    abc('pdr -s -C 0 -T %f'%t)
     return RESULT[get_status()]
 
 def pdrmm(t):
