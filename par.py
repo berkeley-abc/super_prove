@@ -2187,18 +2187,20 @@ def spd(t=900):
     funcs = funcs + [eval('(pyabc_split.defer(super_deep_s)(t))')]
     mtds = ['sleep','initial','after_simp']
     print mtds
+    mx = -1 
     for i,res in pyabc_split.abc_split_all(funcs):
         print i,res
         if i == 0:
             break
         if res == 'SAT' or res < Unsat:
-            set_max_bmc(n_bmc_frames())
-            report_bmc_depth(max_bmc)
+            mx = n_bmc_frames()
             break
         print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],res,(time.time()-y))
-        set_max_bmc(n_bmc_frames())
-        report_bmc_depth(max_bmc)
-    return max_bmc
+        if res > mx:
+            mx = res
+            report_bmc_depth(mx)
+    report_bmc_depth(mx)
+    return mx
    
 
 def super_deep_i(t=900):
@@ -2214,18 +2216,20 @@ def super_deep_i(t=900):
     funcs = funcs + create_funcs(J,t-50)
     mtds =['sleep'] + sublist(methods,J)
     print mtds
+    mx = -1
     for i,res in pyabc_split.abc_split_all(funcs):
         if i == 0:
             break
         if res == 'SAT'or res < Unsat:
             set_max_bmc(n_bmc_frames())
-            break
+            return 'SAT'
+        if n_bmc_frames() > mx:
+            mx = n_bmc_frames()
         print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
-        set_max_bmc(n_bmc_frames())
     print 'Time for super_deep_i = %0.2f'%(time.time()-z)
-    print 'BMC depth initial = %d'%(max_bmc)
-    report_bmc_depth(max_bmc)
-    return res
+    print 'BMC depth initial = %d'%(mx)
+    report_bmc_depth(mx)
+    return mx
 
 def super_deep_s(t=900):
     """
@@ -2242,18 +2246,20 @@ def super_deep_s(t=900):
     funcs = funcs + create_funcs(J,t-50)
     mtds =['sleep'] + sublist(methods,J)
     print mtds
+    mx = -1
     for i,res in pyabc_split.abc_split_all(funcs):
         if i == 0:
             break
         if res == 'SAT' or res < Unsat:
             set_max_bmc(n_bmc_frames())
-            break
+            return 'SAT'
+        if n_bmc_frames() > mx:
+            mx = n_bmc_frames()
         print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
-        set_max_bmc(n_bmc_frames())
     print 'Time for super_deep_s = %0.2f'%(time.time()-z)
-    print 'BMC depth simplified = %d'%(max_bmc)
-    report_bmc_depth(max_bmc)
-    return res
+    print 'BMC depth simplified = %d'%(mx)
+    report_bmc_depth(mx)
+    return mx
 
 def simple(t=10000,no_simp=0):
     y = time.time()
