@@ -2191,8 +2191,12 @@ def spd(t=900):
         print i,res
         if i == 0:
             break
+        if res == 'SAT' or res < Unsat:
+            set_max_bmc(n_bmc_frames())
+            report_bmc_depth(max_bmc)
+            break
         print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],res,(time.time()-y))
-        set_max_bmc(res)
+        set_max_bmc(n_bmc_frames())
         report_bmc_depth(max_bmc)
     return max_bmc
    
@@ -2203,6 +2207,8 @@ def super_deep_i(t=900):
     """
     y = z = time.time()
     J = exactbmcs
+    if n_latches() < 200:
+        J = J + [24]
     t = 890
     funcs = create_funcs([18],890)
     funcs = funcs + create_funcs(J,t-50)
@@ -2211,12 +2217,15 @@ def super_deep_i(t=900):
     for i,res in pyabc_split.abc_split_all(funcs):
         if i == 0:
             break
+        if res == 'SAT'or res < Unsat:
+            set_max_bmc(n_bmc_frames())
+            break
         print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
         set_max_bmc(n_bmc_frames())
     print 'Time for super_deep_i = %0.2f'%(time.time()-z)
     print 'BMC depth initial = %d'%(max_bmc)
     report_bmc_depth(max_bmc)
-    return max_bmc
+    return res
 
 def super_deep_s(t=900):
     """
@@ -2226,6 +2235,8 @@ def super_deep_s(t=900):
     rel = prs(1,1)
     time_used = time.time() - y
     J = exactbmcs
+    if n_latches() < 200:
+        J = J + [24]
     t = max(0,890-time_used) #time left
     funcs = create_funcs([18],t)
     funcs = funcs + create_funcs(J,t-50)
@@ -2234,12 +2245,15 @@ def super_deep_s(t=900):
     for i,res in pyabc_split.abc_split_all(funcs):
         if i == 0:
             break
+        if res == 'SAT' or res < Unsat:
+            set_max_bmc(n_bmc_frames())
+            break
         print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
         set_max_bmc(n_bmc_frames())
     print 'Time for super_deep_s = %0.2f'%(time.time()-z)
     print 'BMC depth simplified = %d'%(max_bmc)
     report_bmc_depth(max_bmc)
-    return max_bmc
+    return res
 
 def simple(t=10000,no_simp=0):
     y = time.time()
@@ -5571,7 +5585,7 @@ def reachy(t=10001):
     x = time.clock()
     abc('orpos;unfold2;fold2;&get;&reachy -T %d'%t)
 ##    print 'reachy done in time = %f'%(time.clock() - x)
-    return get_status()
+    return RESULT[get_status()]
     
 def create_funcs(J,t):
     """evaluates strings indexed by J in methods given by FUNCS
