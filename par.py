@@ -2146,7 +2146,8 @@ def sst(t=2000):
         write_file('smp')
         result = verify(slps+allbmcs+pdrs+sims,t)
         result = get_status()
-    if result == Sat: #rkb
+    if result < Unsat: #rkb
+        print 'unmapping cex'
         res = unmap_cex()
 ##        result = ['SAT'] + result1
         report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
@@ -2766,6 +2767,7 @@ def pre_simp(n=0,N=0):
             ps()
         if ((n_ands() > 0) or (n_latches()>0)):
             res =a_trim()
+            print hist
         if n_latches() == 0:
             break
         status = get_status()
@@ -2775,6 +2777,7 @@ def pre_simp(n=0,N=0):
             status = try_scorr_constr()
         if ((n_ands() > 0) or (n_latches()>0)):
             res = a_trim()
+            print hist
         if n_latches() == 0:
             break
         status = process_status(status)
@@ -2809,6 +2812,7 @@ def pre_simp(n=0,N=0):
                     break
             if ((n_ands() > 0) or (n_latches()>0)):
                 res = a_trim()
+                print hist
         status = process_status(status)
         print 'Simplification time = %0.2f'%(time.time()-ttime)
         last_simp = [n_pis(),n_pos(),n_latches(),n_ands()]
@@ -2914,6 +2918,7 @@ def try_phase():
         return False
 ##    init_simp = 0
     res = a_trim()
+    print hist
     print 'Trying phase abstraction - Max phase = %d'%n,
     abc('w %s_phase_temp.aig'%f_name)
     na = n_ands()
@@ -3214,6 +3219,7 @@ def scorr_constr():
     abc('scorr -c -F %d'%f)
     abc('fold')
     res = a_trim()
+    print hist
     print 'Constrained simplification: ',
     ps()
     return Undecided_no_reduction
@@ -3250,6 +3256,7 @@ def try_scorr_c(f):
         return 0
     else:
         res = a_trim()
+        print hist
         return 1
     
 
@@ -3370,6 +3377,7 @@ def prove_part_1():
     if ((status <= Unsat) or (n_latches() == 0)):
         return RESULT[status]
     res =a_trim()
+    print hist
     if not '_smp' in f_name:
         write_file('smp') #need to check that this was not written in pre_simp
     set_globals()
@@ -7013,9 +7021,10 @@ def fork_last(funcs,mtds):
             break
         elif i == n:
 ##            print res
-            if mtds[i] == 'pre_simp':
+            if mtds[i] == 'PRE_SIMP':
                 m_trace = m_trace + [res[1]]
                 hist = res[2] #not sure why this is here??? pre_simp returns hist but why?
+                print hist
             t = int(time.time()-y)
             m = i
             if mtds[i] == 'initial_speculate':
