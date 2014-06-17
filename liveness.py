@@ -6,8 +6,11 @@ import subprocess
 
 from contextlib import contextmanager
 
+import affinity
 import pyabc
 import pyabc_split
+import pyliveness
+import pyzz
 
 @contextmanager
 def temp_file_names(N, suffix=""):
@@ -66,9 +69,43 @@ def run_bip(args, aiger):
                 
             return parse_bip_status(tmpnames[0])
 
+
+def run_super_prove(aiger_filename, used_cores, super_prove):
+
+    print 'NIKLAS: running super_prove', aiger_filename, used_cores, super_prove
+
+    mask = affinity.sched_getaffinity(os.getpid())
+    affinity.sched_setaffinity(os.getpid(), mask[used_cores:])
+
+    res = super_prove(aiger_filename)
+
+    print 'NIKLAS: super_prove returned ', res
+
+    return res
+
+
+def compute_sc(simple_aiger, sc_aiger, l2s_aiger):
+
+    print 'NIKLAS: computing stabilizing constraints'
+
+    N0 = pyzz.netlist.read_aiger(simple_aiger)
+
+    N, new_fg = pyliveness.extract_stabilizing_constraints(N0, 0, list(N0.get_Flops()))
+
+    N.write_aiger(sc_aiger)
+
+    M, xlat, loop_start = pyliveness.extract_liveness_as_safety(N, new_fg)
+    M.write_aiger(l2s_aiger)
+
+    print 'NIKLAS: done computing stabilizing constraints'
+
+    return True
+
+
 from pyaig import AIG, read_aiger, write_aiger, utils
 
-def run_niklas_single(aiger, simplify, report_result, timeout=None):
+
+def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=None):
     
     orig_args = [
         [ ',live', '-k=l2s', '-eng=treb-abs' ],
@@ -82,10 +119,12 @@ def run_niklas_single(aiger, simplify, report_result, timeout=None):
         [ ',live', '-k=l2s', '-eng=treb' ],
     ]
     
-    with temp_file_names(1, suffix='.aig') as simple_aiger:
+    with temp_file_names(3, suffix='.aig') as temporary_files:
+
+        simple_aiger, sc_aiger, l2s_aiger = temporary_files
 
         orig_funcs = [ pyabc_split.defer(run_bip)(a, aiger) for a in orig_args ]
-        simplified_funcs = [ pyabc_split.defer(run_bip)(a, simple_aiger[0]) for a in simplified_args ]
+        simplified_funcs = [ pyabc_split.defer(run_bip)(a, simple_aiger) for a in simplified_args ]
 
         with pyabc_split.make_splitter() as splitter:
 
@@ -94,7 +133,9 @@ def run_niklas_single(aiger, simplify, report_result, timeout=None):
             ids = splitter.fork_all( orig_funcs )
             kill_if_simplified = ids[1:]
             
-            simplifier_id = splitter.fork_one( pyabc_split.defer(simplify)(aiger, simple_aiger[0]) )
+            simplifier_id = splitter.fork_one( pyabc_split.defer(simplify)(aiger, simple_aiger) )
+
+            sc_id = None
             
             for id, res in splitter:
                 
@@ -111,15 +152,26 @@ def run_niklas_single(aiger, simplify, report_result, timeout=None):
                     print 'NIKLAS: killing'
                     splitter.kill(kill_if_simplified)
                     splitter.fork_all( simplified_funcs )
+
+                    sc_id = splitter.fork_one( pyabc_split.defer(compute_sc)(simple_aiger, sc_aiger, l2s_aiger))
                     continue
-                    
+
+                elif id == sc_id:
+
+                    print "NIKLAS: sc ended"
+
+                    if res:
+                        splitter.fork_one( pyabc_split.defer(run_bip)([',live', '-k=inc'], sc_aiger) )
+                        if super_prove:
+                            splitter.fork_one( pyabc_split.defer(run_super_prove)(l2s_aiger, 3, super_prove) )
+
                 elif report_result(res):
-                    print 'NIKLAS: RESULT'
+                    print 'NIKLAS: RESULT', res
                     return True
 
     return False
 
-def run_niklas_multi(aiger, simplify, report_result):
+def run_niklas_multi(aiger, simplify, report_result, super_prove=None):
     
     with open(aiger, 'r') as fin:
         aig = read_aiger( fin )
@@ -128,7 +180,7 @@ def run_niklas_multi(aiger, simplify, report_result):
     assert n_j_pos > 0
     
     if n_j_pos==1:
-        return run_niklas_single( aiger, simplify, report_result=lambda res: report_result(0, res) )
+        return run_niklas_single( aiger, simplify, report_result=lambda res: report_result(0, res), super_prove=super_prove )
     
     with temp_file_names(n_j_pos, suffix='.aig') as single_aiger:
         
@@ -145,7 +197,7 @@ def run_niklas_multi(aiger, simplify, report_result):
         
         while unsolved:
             for j_po in sorted(unsolved):
-                if run_niklas_single( single_aiger[j_po], simplify, report_result=lambda res: report_result(j_po, res), timeout=timeout ):
+                if run_niklas_single( single_aiger[j_po], simplify, report_result=lambda res: report_result(j_po, res), timeout=timeout, super_prove=super_prove ):
                     unsolved.remove(j_po)
             timeout *= 2
         
@@ -188,4 +240,3 @@ if __name__ == "__main__":
         except:
             import traceback
             traceback.print_exc()
-

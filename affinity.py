@@ -5,7 +5,6 @@ import ctypes.util
 
 _number_of_cores = os.sysconf('SC_NPROCESSORS_ONLN')
 
-_libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
 _pid_t = ctypes.c_int32
 _mask_t = ctypes.c_uint64
 
@@ -19,6 +18,8 @@ def _or( values ):
     return res
 
 def sched_getaffinity(pid):
+
+    _libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
 
     mask = _mask_t()
 
@@ -36,6 +37,8 @@ def sched_getaffinity(pid):
 
 
 def sched_setaffinity(pid, cpus):
+
+    _libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
 
     mask = _mask_t(_or(1<<c for c in cpus))
 

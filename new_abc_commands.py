@@ -245,11 +245,18 @@ proof_command_wrapper(par.spd,  'HWMCC13', '/super_deep_aiger',  0)
 proof_command_wrapper(par.mp,  'HWMCC13', '/multi_prove_aiger',  0, multi=True)
 
 def simple_liveness_prooffunc(aig_filename):
-    
-    import liveness
+
+
+    try:
+        import liveness
+    except:
+        import traceback
+        traceback.print_exc()
+
     from pyaig import utils
 
     def simplify(aiger_in, aiger_out):
+        print 'SIMPLIFY: start simplify', aiger_in, aiger_out
         
         with liveness.temp_file_names(2, suffix='.aig') as tmp:
 
@@ -263,6 +270,8 @@ def simple_liveness_prooffunc(aig_filename):
 
             utils.restore_po_info( saved, tmp[1], aiger_out )
             
+            print 'SIMPLIFY: ended simplify'
+
             return True
         
     def report_result(id, res):
@@ -278,8 +287,25 @@ def simple_liveness_prooffunc(aig_filename):
             
         return False
 
+    def super_prove(aiger_filename):
+
+        par.read_file_quiet(aiger_filename)
+
+        result = par.sp()
+
+        if result=="SAT":
+            return {'result':'failed'}
+        elif result=="UNSAT":
+            return {'result':'proved'}
+        elif type(result)==list and len(result)>0 and result[0] == "SAT":
+            return {'result':'failed'}
+        elif type(result)==list and len(result)>0 and result[0] == "UNSAT":
+            return {'result':'proved'}
+        else:
+            return {'result':'unknwon'}
+
     try:
-        liveness.run_niklas_multi(aig_filename, simplify=simplify, report_result=report_result)
+        liveness.run_niklas_multi(aig_filename, simplify=simplify, report_result=report_result, super_prove=super_prove)
     except:
         import traceback
         traceback.print_exc()
