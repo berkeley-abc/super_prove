@@ -50,6 +50,8 @@ def parse_bip_status(status):
 
 def run_bip(args, aiger):
 
+    print "NIKLAS: running bip", args, aiger
+
     import redirect
     with redirect.redirect():
 
@@ -66,8 +68,13 @@ def run_bip(args, aiger):
             
             if rc!=0:
                 return None
-                
-            return parse_bip_status(tmpnames[0])
+
+            res = parse_bip_status(tmpnames[0])
+
+            print 'NIKLAS: bip finished: ', args, aiger, rc, res
+
+            return res
+
 
 
 def run_super_prove(aiger_filename, used_cores, super_prove):
