@@ -2897,8 +2897,8 @@ def try_phases():
 ##    ps()
     no = n_pos()
     res = try_phase()
-##    print 'after try_phase ',
-##    ps()
+    print 'after try_phase ',
+    ps()
     N = n_pos()/no
     if N > 1:
         res = True
@@ -2967,6 +2967,7 @@ def try_phase():
         if n_phases() == 1: #this bombs out if no latches
             return False
         else:
+            aigs_pp('push','phase')
             result = try_phase()
             return result
     elif len(z)>2: #Try the next eligible phase.
@@ -3088,8 +3089,9 @@ def try_temps(t=20):
             return False,F
         if ((best == (n_pis(),n_latches(),n_ands())) or n_ands() > .9 * best[2] ):
             break
-        else:
+        else: #made progress
             smp_trace = smp_trace + ['tempor']
+            aigs_pp('push','tempor')
             best = (n_pis(),n_latches(),n_ands())
     return True,n_pis()/npi
         
@@ -7023,7 +7025,7 @@ def fork_last(funcs,mtds):
 ##            print res
             if mtds[i] == 'PRE_SIMP':
                 m_trace = m_trace + [res[1]]
-                hist = res[2] #not sure why this is here??? pre_simp returns hist but why?
+                hist = res[2] #pre_simp must return hist because hist in not passed otherwise.
                 print hist
             t = int(time.time()-y)
             m = i
