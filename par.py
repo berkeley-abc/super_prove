@@ -269,7 +269,7 @@ def initialize():
     abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
     total_spec_refine_time = 150 # timeout for speculation refinement
     abs_ratio = .5 
-    hist = []
+##    hist = []
     skip_spec = False
     t_iter_start = 0
     inf = 10000000
@@ -581,21 +581,31 @@ def read_file_quiet(fname=None):
         s = s+'.aig'
 ##    run_command(s)
 ##    print s
-    if s[-4:] == '.aig':
-##        run_command('&r %s;&put'%s) #warning: changes names to generic ones.
-        run_command('r %s'%s)
-        run_command('logic;undc;st')
-        run_command('zero')
-    else: #this is a blif file
-        run_command('r %s'%s)
-        run_command('logic,undc')
-        abc('st;&get;&put') #changes names to generic ones for doing cec later.
-        run_command('zero;w %s.aig'%f_name)
-    set_globals()
-    hist = []
     init_initial_f_name = initial_f_name = f_name
+    run_command('r %s;st'%s)
     run_command('fold') #only does something if some of the outputs are constraints.
+    sz = sizeof()
+    hist = []
     aigs_pp('push','initial')
+    run_command('logic;undc;st;zero')
+    if not sz == sizeof():
+        aigs_pp('push','undc')
+    print 'history = %s'%hist
+##    if s[-4:] == '.aig':
+##        run_command('&r %s;&put'%s) 
+##        run_command('r %s'%s)
+##        run_command('logic;undc;st;zero')
+    if s[-5:] == '.blif': #this is a blif file
+##        run_command('r %s'%s)
+##        run_command('logic,undc')
+##        abc('st;&get;&put') #changes names to generic ones for doing cec later.
+##        run_command('zero;w %s.aig'%f_name)
+        abc('&get;&put;w %s.aig'%f_name) #warning: changes names to generic ones.
+    set_globals()
+##    hist = []
+##    init_initial_f_name = initial_f_name = f_name
+##    run_command('fold') #only does something if some of the outputs are constraints.
+##    aigs_pp('push','initial')
     #aigs = create push/pop history of aigs
     #aigs.push() put the initial aig on the aig list.
     print 'Initial f_name = %s'%f_name
@@ -615,9 +625,11 @@ def aigs_pp(op='push', typ='reparam'):
         hist.append(typ)
         abc('w %s_aigs_%d.aig'%(init_initial_f_name,len(hist)))
     if op == 'pop':
+        print hist
         abc('cexsave') #protect current cex from a read
         abc('r %s_aigs_%d.aig'%(init_initial_f_name,len(hist)))
         abc('cexload')
+        ps()
         typ = hist.pop()
 ##    print hist
     return typ
@@ -3807,6 +3819,16 @@ def unmap_cex():
         typ = aigs_pp('pop') #puts new aig in reg-space
         print typ,
         ps()
+        if typ == 'undc':
+            typ2 = aigs_pp('pop') #gets the aig before undc
+            print typ2
+            ps()
+            run_command('&ps')
+            run_command('undc -c')
+            print 'Number of PIs in cex = %d, Number of frames = %d'%(n_cex_pis(),cex_frame())
+            run_command('testcex -a')
+            hist = hist + [typ2]
+            continue
         if typ == 'phase':
             print 'before conversion'
             run_command('testcex') #tests cex against aig in &-space
