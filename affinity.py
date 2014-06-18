@@ -19,7 +19,7 @@ def _or( values ):
 
 def sched_getaffinity(pid):
 
-    _libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    _libc = ctypes.CDLL('libc.so.6', use_errno=True)
 
     mask = _mask_t()
 
@@ -38,7 +38,7 @@ def sched_getaffinity(pid):
 
 def sched_setaffinity(pid, cpus):
 
-    _libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    _libc = ctypes.CDLL('libc.so.6', use_errno=True)
 
     mask = _mask_t(_or(1<<c for c in cpus))
 
@@ -52,3 +52,8 @@ def sched_setaffinity(pid, cpus):
         raise OSError(ctypes.get_errno(), 'sched_setaffinity(): %s'%os.strerror(ctypes.get_errno()))
 
     return mask.value
+
+if __name__=='__main__':
+    print sched_getaffinity(os.getpid())
+    sched_setaffinity(os.getpid(), [0,1])
+    print sched_getaffinity(os.getpid())
