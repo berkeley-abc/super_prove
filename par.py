@@ -2414,7 +2414,9 @@ def get_status():
 
 def two_temp(t=20):
     tt = time.time()
-    abc('tempor;scl;drw;&get;&rpm;&put;tempor;scl;drw;&get;&rpm;&put;scorr')
+##    abc('tempor;scl;drw;&get;&rpm;&put;tempor;scl;drw;&get;&rpm;&put;scorr')
+##    The above use of &rem causes an error in unmapping cex
+    abc('tempor;scl;drw;tempor;scl;drw;scorr')
     print 'Time for two_temp = %.2f : '%(time.time()-tt),
     ps()
     return get_status()
@@ -2809,17 +2811,21 @@ def pre_simp(n=0,N=0):
                 tt = 25
                 if n_ands() > 500000:
                     tt = 30
+                print 'trying try_temps'
                 res,F = try_temps(tt) 
                 if res:
+                    print 'tempor worked'
                     aigs_pp('push','tempor')
                     #temporary
                     simplify(n,N)
                     #temporary
                 if n_latches() == 0:
                     break
-                if n == 0: 
+                if n == 0:
+                    print 'trying try_phases'
                     res,N = try_phases()
                     if res:
+                        print 'phase worked'
                         aigs_pp('push','phase')
                 if n_latches() == 0:
                     break
@@ -3039,6 +3045,7 @@ def try_temp(t=15):
     F = F + [eval('(pyabc_split.defer(two_temp)())')]
     for i,res in pyabc_split.abc_split_all(F):
         print i,res
+        ps()
         if i == 0:
             break
         if n_latches() == 0:
@@ -3050,6 +3057,7 @@ def try_temp(t=15):
         if cost<0:
             nri=n_real_inputs()
             best = (nri,n_latches(),n_ands())
+            ps()
             abc('w %s_best_temp.aig'%f_name)
             i_best = i
             cost_best = cost
