@@ -583,7 +583,7 @@ def read_file_quiet(fname=None):
 ##    print s
     init_initial_f_name = initial_f_name = f_name
     run_command('r %s;st'%s)
-    run_command('fold') #only does something if some of the outputs are constraints.
+##    run_command('fold') #only does something if some of the outputs are constraints.
     sz = sizeof()
     hist = []
     aigs_pp('push','initial')
@@ -601,6 +601,7 @@ def read_file_quiet(fname=None):
 ##        abc('st;&get;&put') #changes names to generic ones for doing cec later.
 ##        run_command('zero;w %s.aig'%f_name)
         abc('&get;&put;w %s.aig'%f_name) #warning: changes names to generic ones.
+    run_command('fold')
     set_globals()
 ##    hist = []
 ##    init_initial_f_name = initial_f_name = f_name
@@ -3405,7 +3406,7 @@ def run_par_simplify():
     J = modify_methods(J,1)
 ##    J = J + bestintrps
     funcs = create_funcs(J,t)+ funcs #important that pre_simp goes last
-    mtds =sublist(methods,J) + ['pre_simp']
+    mtds =sublist(methods,J) + ['PRE_SIMP']
     print mtds
     result = fork_last(funcs,mtds)
     status = get_status()
