@@ -111,7 +111,7 @@ def temp_filename():
         os.unlink(name)
 
 @contextmanager
-def replace_report_result(multi, write_cex=False):
+def replace_report_result(write_cex=False, bmc_depth=False):
     
     def report_result(po, result):
         
@@ -138,8 +138,9 @@ def replace_report_result(multi, write_cex=False):
 
     def report_bmc_depth(depth):
         
-        if not multi:
-            print "REPORT BMC DEPTH:", depth
+        print "REPORT BMC DEPTH:", depth
+
+        if bmc_depth:
             print >> stdout, "u%d"%depth
     
     with redirect.save_stdout() as stdout:
@@ -160,7 +161,7 @@ def replace_report_result(multi, write_cex=False):
             #~ par.report_liveness_result = report_liveness_result
             par.report_bmc_depth = old_report_bmc_depth
 
-def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False, write_cex=False):
+def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False, write_cex=False, bmc_depth=False):
 
     def wrapper(argv):
         
@@ -184,7 +185,7 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
             
         aig_filename = os.path.abspath(args[1])
 
-        with replace_report_result(multi, write_cex):
+        with replace_report_result(write_cex=write_cex, bmc_depth=bmc_depth):
 
             if options.redirect:
                 pyabc.run_command('/pushredirect %s'%options.redirect)
@@ -228,11 +229,11 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
     
     pyabc.add_abc_command(wrapper, category_name, command_name, change)
 
-def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=False, write_cex=False):
+def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=False, write_cex=False, bmc_depth=False):
     def pf(aig_filename):
         par.read_file_quiet(aig_filename)
         return prooffunc()
-    return proof_command_wrapper_internal(pf, category_name, command_name, change, multi, write_cex)
+    return proof_command_wrapper_internal(pf, category_name, command_name, change, multi, write_cex, bmc_depth)
 
 def super_prove():
     return par.sp(check_trace=True)
@@ -241,7 +242,7 @@ proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_c
 proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0)
 proof_command_wrapper(par.simple_bip,  'HWMCC13', '/simple_bip_aiger',  0)
 proof_command_wrapper(par.sst,  'HWMCC13', '/simple_sat_aiger',  0, write_cex=True)
-proof_command_wrapper(par.spd,  'HWMCC13', '/super_deep_aiger',  0)
+proof_command_wrapper(par.spd,  'HWMCC13', '/super_deep_aiger',  0, bmc_depth=True)
 proof_command_wrapper(par.mp,  'HWMCC13', '/multi_prove_aiger',  0, multi=True)
 
 def simple_liveness_prooffunc(aig_filename):
