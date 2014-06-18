@@ -169,9 +169,8 @@ def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=
 
                     if res:
                         splitter.fork_one( pyabc_split.defer(run_bip)([',live', '-k=inc'], sc_aiger) )
-                        splitter.fork_one( pyabc_split.defer(run_bip)([',treb'], l2s_aiger) )
-                        splitter.fork_one( pyabc_split.defer(run_bip)([',treb-abs'], l2s_aiger) )
-                        splitter.fork_one( pyabc_split.defer(run_bip)([',bmc'], l2s_aiger) )
+                        if super_prove:
+                            splitter.fork_one( pyabc_split.defer(run_super_prove)(l2s_aiger, 3, super_prove) )
 
                 elif report_result(res):
                     print 'NIKLAS: RESULT', res
