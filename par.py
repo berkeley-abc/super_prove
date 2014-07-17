@@ -146,7 +146,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(intrp)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,imc -vt=%f'%(t)))",
 ##         "(pyabc_split.defer(abc)('&get;,imc-sofa -vt=%f'%(t)))",
-         "(pyabc_split.defer(bmc)(t-40))", #rkb  -40 istemp change for hwmcc14 depth bound competition
+         "(pyabc_split.defer(bmc)(t))", #rkb  -40 istemp change for hwmcc14 depth bound competition
 ##         "(pyabc_split.defer(abc)('&get;,bmc -vt=%f'%t))",
          "(pyabc_split.defer(simulate)(t))",
          "(pyabc_split.defer(reachx)(t))",
@@ -2145,9 +2145,8 @@ def speculate(t=0):
         write_file('spec')
         return Undecided_reduction
 
-
 def sst(t=2000):
-    '''aimple SAAT which writs out an unmapped cex to a file for reporting to hwmcc'''
+    '''aimple SAT which writs out an unmapped cex to a file for reporting to hwmcc'''
     y = time.time()
     J = allbmcs+pdrs+sims+[5] #5 is pre_simp
     funcs = create_funcs(J,t)
@@ -2197,7 +2196,7 @@ def spd(t=900):
     tries bmcs both before and after simplify
     """
     y=time.time()
-    funcs = create_funcs([18],898)
+    funcs = create_funcs([18],t-2) #sleep
     funcs = funcs + [eval('(pyabc_split.defer(super_deep_i)(t))')]
     funcs = funcs + [eval('(pyabc_split.defer(super_deep_s)(t))')]
     mtds = ['sleep','initial','after_simp']
@@ -2215,10 +2214,11 @@ def spd(t=900):
             mx = res
             report_bmc_depth(mx)
     report_bmc_depth(mx)
+    print 'Best depth = %d'%mx
     return mx
    
 
-def super_deep_i(t=900):
+def super_deep_i(tt=900):
     """
     aimed at finding the deepest valid depth starting from the initial aig
     """
@@ -2226,9 +2226,9 @@ def super_deep_i(t=900):
     J = exactbmcs +[40]
     if n_latches() < 200:
         J = J + [24]
-    t = 890
-    funcs = create_funcs([18],890)
-    funcs = funcs + create_funcs(J,t-50)
+    t = tt-10
+    funcs = create_funcs([18],t) #sleep
+    funcs = funcs + create_funcs(J,t-5)
     mtds =['sleep'] + sublist(methods,J)
     print mtds
     mx = -1
@@ -2242,23 +2242,24 @@ def super_deep_i(t=900):
             mx = n_bmc_frames()
         print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
     print 'Time for super_deep_i = %0.2f'%(time.time()-z)
-    print 'BMC depth initial = %d'%(mx)
+    print 'max good depth initial = %d'%(mx)
     report_bmc_depth(mx)
     return mx
 
-def super_deep_s(t=900):
+def super_deep_s(tt=900):
     """
     aimed at finding the deepest valid depth - simplifies first
     """
     z = y = time.time() #make it seem like it started 15 sec before actually
-    rel = prs(1,1)
+    rel = prs(1,1) # pre simplicatin
     time_used = time.time() - y
     J = exactbmcs +[40]
     if n_latches() < 200:
         J = J + [24]
-    t = max(0,890-time_used) #time left
-    funcs = create_funcs([18],t)
-    funcs = funcs + create_funcs(J,t-50)
+    ttt = tt-10
+    t = max(0,ttt-time_used) #time left
+    funcs = create_funcs([18],t) #sleep
+    funcs = funcs + create_funcs(J,t-5)
     mtds =['sleep'] + sublist(methods,J)
     print mtds
     mx = -1
@@ -2272,7 +2273,7 @@ def super_deep_s(t=900):
             mx = n_bmc_frames()
         print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
     print 'Time for super_deep_s = %0.2f'%(time.time()-z)
-    print 'BMC depth simplified = %d'%(mx)
+    print 'max good depth simplified = %d'%(mx)
     report_bmc_depth(mx)
     return mx
 
@@ -2298,6 +2299,7 @@ def simple(t=10000,no_simp=0):
         report_cex(1)
 ##    add_pord('%s by %s'%(result[0],result[1])
     return [RESULT[result[0]]] + [result[1]]
+
 
 def simple_bip(t=1000):
     y = time.time()
