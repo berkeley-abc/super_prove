@@ -2223,13 +2223,14 @@ def super_deep_i(tt=900):
     aimed at finding the deepest valid depth starting from the initial aig
     """
     y = z = time.time()
-    J = exactbmcs +[40]
+    J = [9,31,40]
     if n_latches() < 200:
         J = J + [24]
     t = tt-10
     funcs = create_funcs([18],t) #sleep
+    funcs = funcs + create_funcs([2],max(5,t-40))
     funcs = funcs + create_funcs(J,t-5)
-    mtds =['sleep'] + sublist(methods,J)
+    mtds =['sleep'] + sublist(methods,[2]+J)
     print mtds
     mx = -1
     for i,res in pyabc_split.abc_split_all(funcs):
@@ -2253,14 +2254,15 @@ def super_deep_s(tt=900):
     z = y = time.time() #make it seem like it started 15 sec before actually
     rel = prs(1,1) # pre simplicatin
     time_used = time.time() - y
-    J = exactbmcs +[40]
+    J = [9,31,40]
     if n_latches() < 200:
         J = J + [24]
     ttt = tt-10
     t = max(0,ttt-time_used) #time left
     funcs = create_funcs([18],t) #sleep
+    funcs = funcs + create_funcs([2],max(5,t-40))
     funcs = funcs + create_funcs(J,t-5)
-    mtds =['sleep'] + sublist(methods,J)
+    mtds =['sleep'] + sublist(methods,[2]+J)
     print mtds
     mx = -1
     for i,res in pyabc_split.abc_split_all(funcs):
@@ -2934,13 +2936,14 @@ def try_phase():
     If not, then revert back to original"""
     global init_simp, smp_trace,aigs
     n = n_phases()
+    print 'Phases = %d'%n
 ##    if ((n == 1) or (n_ands() > 45000) or init_simp == 0):
     if ((n == 1) or (n_ands() > 60000)):
         return False
 ##    init_simp = 0
     res = a_trim()
     print hist
-    print 'Trying phase abstraction - Max phase = %d'%n,
+    print 'Trying phase abstraction - Max phase = %d'%n
     abc('w %s_phase_temp.aig'%f_name)
     na = n_ands()
     nl = n_latches()
@@ -2985,7 +2988,9 @@ def try_phase():
         abc('w %s_phase_temp.aig'%f_name)
         if ((n_latches() == 0) or (n_ands() == 0)):
             return True
-        if n_phases() == 1: #this bombs out if no latches
+        if n_phases() == 1: #this bombs out if no latches. Need to see if any more phases to be tried.
+            aigs_pp('push','phase') #this code can be simplified - 
+            print 'n_phases = %d'%n_phases()
             return False
         else:
             aigs_pp('push','phase')
@@ -3018,6 +3023,7 @@ def try_phase():
             if n_phases() == 1: # this bombs out if no latches
                 return True
             else:
+                aigs_pp('push','phase')
                 result = try_phase()
                 return result
         else:
@@ -8420,7 +8426,7 @@ def monitor_and_prove():
             time_remain = t -(time.time() - tt)
             abc('r %s_abs.aig'%f_name) #read in the abstraction to destroy is_sat().
             if abs_done(time_remain):
-                return [Undecided]+['timeout']
+                return [Undecided_no_reduction]+['timeout']
             res = read_and_sleep(5) #this will check every 5 sec, until abs_time sec has passed without new abs            
             if res == False: #found new vabs. Now continue if vabs small enough
 ##                print 'n_vabs = %d'%n_vabs
