@@ -3330,6 +3330,8 @@ def prove(a=0,abs_tried = False):
         if result == 'UNDECIDED' and abs_tried and n_pos() <= 2:
             add_trace('de_speculate')
             return result
+        if abs_tried:
+            return result
     else:
         abs_tried = True
         result = prove_part_2() #abstraction done here first
@@ -3338,10 +3340,13 @@ def prove(a=0,abs_tried = False):
 ##    Second phase
     if spec_first: #did spec already in first phase
         t_init = 2
-        abs_tried = True
-        result = prove_part_2() #abstraction done here second
-        if result == 'SAT':
-            abs_found_cex_after_spec = True
+        if not abs_tried:
+            abs_tried = True
+            result = prove_part_2() #abstraction done here second
+            if result == 'SAT':
+                abs_found_cex_after_spec = True
+        else:
+            return result
     else:
         result = prove_part_3()  #speculation done here second
         if result == 'SAT':
@@ -3364,7 +3369,7 @@ def prove(a=0,abs_tried = False):
             print 'proving speculation first'
             write_file('rev') #maybe can get by with just changing f_name
             print 'f_name = %s'%f_name
-            result = prove(1,True) #1 here means do smp and then spec 
+            result = prove(1,True) #1 here means do smp and then spec but not abs
             if ((result == 'SAT') or (result == 'UNSAT')):
                 return result
     elif ('_spec' in f_name and abs_found_cex_after_spec): #abs file should not have been written in abstract
@@ -3829,6 +3834,13 @@ def unmap_cex():
     global aigs,hist
     print hist
 ##    while not aigs == []:
+    if len(hist)==0:
+        print 'length of history is 0'
+        size = str([n_pis(),n_pos(),n_latches(),n_ands()])
+        print 'cex length = %d'%cex_frame()
+        tr = ['cex length = %d'%cex_frame()] + ['cex matches original aig = %s'%size]
+        print 'cex matches original aig'
+        return tr
     while not len(hist) == 0:
         n = n_latches()
         abc('&get') #save the current aig in &-space
@@ -5641,6 +5653,9 @@ def reachy(t=10001):
     x = time.clock()
     abc('orpos;unfold2;fold2;&get;&reachy -T %d'%t)
 ##    print 'reachy done in time = %f'%(time.clock() - x)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'reachy returned %s'%str(gs)
     return RESULT[get_status()]
     
 def create_funcs(J,t):
@@ -6633,6 +6648,9 @@ def remove_proved_pos(lst):
 def bmc_j(t=2001):
     cmd = 'bmc3 -C 5000 -J 2 -D 5000'
     abc(cmd)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'bmc_j returned %s'%str(gs)
     return RESULT[get_status()]
 
         
@@ -6655,12 +6673,18 @@ def bmc_j2(t=2001):
     abc(cmd)
 ##    if is_sat():
 ##        print 'cex found in %0.2f sec at frame %d'%((time.time()-x),cex_frame())
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'bmc_j2 returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdrseed(t=2001):
     """uses the abstracted version now"""
 ##    abc('&get;,treb -rlim=60 -coi=3 -te=1 -vt=%f -seed=521'%t)
     abc('&get;,treb -rlim=100 -vt=%f -seed=521'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdr_seed returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdrold(t):
@@ -6669,6 +6693,9 @@ def pdrold(t):
 
 def pdr(t=2001):
     abc('&get; ,treb -vt=%f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdr returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdr0(t=2001):
@@ -6679,14 +6706,23 @@ def pdra(t=2001):
 ####    temporarily disabled for experiment
 ##    return 'UNDECIDED'
     abc('&get; ,treb -abs -rlim=100 -sat=abc -vt=%f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdra returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdrm(t=2001):
     abc('pdr -C 0 -T %f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdrm returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdrm_exact(t=2001):
     abc('pdr -s -C 0 -T %f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdr_exact returned %s'%str(gs)
     return RESULT[get_status()]
 
 def pdrmm(t):
@@ -6694,16 +6730,25 @@ def pdrmm(t):
     return RESULT[get_status()]
 
 def bmc2(t):
-   abc('bmc2 -T %d'%t)
-   return RESULT[get_status()]
+    abc('bmc2 -T %d'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'bmc2 returned %s'%str(gs)
+    return RESULT[get_status()]
 
 def bmc(t=2001):
 ##    abc('&get; ,bmc -vt=%d'%t)
     abc('&get; ,bmc -timeout=%0.2f -vt=%0.2f'%(t,t))
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'bmc returned %s'%str(gs)
     return RESULT[get_status()]
 
 def intrp(t=2001):
     abc('&get; ,imc -vt=%d'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'intrp returned %s'%str(gs)
     return RESULT[get_status()]
 
 def mprove_and(t=2001,gt=10,C=999,H=0):
@@ -6777,11 +6822,17 @@ def sim3az(t=2001,gt=10,C=1000,W=5,N=0):
     
 def bmc3(t=2001):
     abc('bmc3  -T %d'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'bmc3 returned %s'%str(gs)
     return RESULT[get_status()]
 
 def intrpm(t=2001):
     abc('int -T %d'%t)
-    print 'intrpm: status = %d'%get_status() 
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'intrpm returned %s'%str(gs)
+    #print 'intrpm: status = %d'%get_status() 
     return RESULT[get_status()]
 
 def split(n):
