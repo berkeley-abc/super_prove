@@ -12,22 +12,15 @@ import sys
 import math
 import time
 from  pyabc_split import *
+from pyaig import truth_tables
+from pyaig import aig_to_tt_fname
 ##import pdb
 ##from IPython.Debugger import Tracer; debug_here = Tracer()
 # change
 
 
-# source abc.rc if not in HWMCC mode
-if 'ABC_PYTHON_ABC_RC' not in os.environ:
-    abc_common.x('source abc.rc')
-
-# add Bip commands
-for d in os.environ['PATH'].split(':'):
-    bip = os.path.join(d, 'bip')
-    if os.path.exists(bip):
-        pyabc.run_command("load_plugin %s Bip"%bip)
-        break
-
+#x('source ../../abc.rc')
+abc_common.x('source abc.rc')
 
 def minus(L1,L2):
     out = []
@@ -155,10 +148,10 @@ def list_aig(s=''):
         name = name1[:-4]
         if not s_in_s(s,name):
             continue
-        print '%s '%name,
+##        print '%s '%name,
         abc('r %s.aig'%name)
-        ps()
-        result = result + [name1]
+##        ps()
+        result = result + [name1+': '+str((n_pis(),n_pos(),n_latches(),n_ands()))]
     return result
 
 def list_size(d):
@@ -172,7 +165,7 @@ def list_size(d):
         name1 = d[j]
         name = name1[:-8]
         name2 = '../' + name+'.aig'
-        print name1,name2,name
+##        print name1,name2,name
         run_command('r %s'%name2)
 ##        ps()
         result = result + [[name+'    '+ str([n_pis(),n_latches(),n_ands()])]]

@@ -9,6 +9,7 @@ import main
 import filecmp
 import random
 import operator
+import pyaig
 
 try:
     import regression
@@ -105,6 +106,13 @@ ifbip = 0 # sets the abtraction method to vta or gla, If = 1 then uses ,abs
 if_no_bip = False #True sets it up so it can't use bip and reachx commands.
 abs_ratio = .5 #this controls when abstraction is too big and gives up
 #####################################
+
+############## No bip Settings ########################
+##abs_time = 500  #number of sec before initial abstraction terminates.
+##abs_ref_time = 1000 #number of sec. allowed for abstraction refinement.
+##if_no_bip = True #True sets it up so it can't use bip and reachx commands.
+#######################################
+
 
 def abstr_a(t1=200,t2=200,absr=0):
     global abs_time, abs_ref_time, abs_ratio
@@ -1901,7 +1909,7 @@ def speculate(t=0):
         ud = count_less(r,0) #undecided L=-1 means undecided, L=0 means unsat, L=1 means sat
         us = count_less(r,1)-ud #unsat
         sa = count_less(r,2) - (ud+us) #sat
-        if sa > .5*tot:
+        if sa > .5*tot or sa >.3*ud:
             print 'too many POs are already SAT'
             add_trace('de_speculate')
             return Undecided_no_reduction
@@ -3713,6 +3721,8 @@ def remove_intrps(J):
         return J
     JJ = []
     alli = [23,1,22] # if_no_bip, then this might need to be changed
+    if if_no_bip == True:
+        alli=[23]
     l = len(J)-npr
     alli = alli[l:]
 ##    J.reverse() #strip off in reverse order.
@@ -5822,7 +5832,7 @@ def prove_all_ind():
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name) #have to restore original here
         if status == Unsat:
-##            print '+',
+##            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
             if j < n_pos_before - n_pos_proved:
@@ -5909,7 +5919,7 @@ def prove_all_mtds(t):
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name)
         if status == Unsat:
-            print '+',
+##            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
         print '%d'%j,
@@ -5937,7 +5947,7 @@ def prove_all_pdr(t):
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name)
         if status == Unsat:
-            print '+',
+            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
         print '%d'%j,
@@ -5961,7 +5971,7 @@ def prove_each_ind():
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name)
         if status == Unsat:
-            print '+',
+            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
         print '%d'%j,
@@ -5984,7 +5994,7 @@ def prove_each_pdr(t):
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name)
         if status == Unsat:
-            print '+',
+            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
         print '%d'%j,
@@ -6036,7 +6046,7 @@ def disprove_each_bmc(t):
         status = get_status()
         abc('r %s_osavetemp.aig'%f_name)
         if status == Sat:
-            print '+',
+            print 'sign = +',
             abc('zeropo -N %d'%j)
             abc('w %s_osavetemp.aig'%f_name) #if changed, store it permanently
         print '%d'%j,
@@ -8286,7 +8296,8 @@ def gla_abs_iter(t):
     cmd = '&gla -mvs -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d'%(f_name,it,r,q,abs_depth)
     print 'Executing %s'%cmd
     name = '%s_vabs.aig'%f_name
-    run_command(cmd)
+##    run_command(cmd)
+    abc(cmd)
     if os.access(name,os.R_OK):
         run_command('&r -s %s_vabs.aig'%f_name) #get the last abstraction result
         run_command('&w %s_gla.aig'%f_name) #saves the result of abstraction.
@@ -8565,7 +8576,9 @@ def read_and_sleep(t=5):
             #if same size, keep going.
         print '.',
         sleep(5)
-####################################################
+
+        
+######################## FINDING ADDER ############################
 
 
 """ the following is for unraveling an adder whose PIs and POs have been permuted"""
@@ -8579,7 +8592,6 @@ def b2d(n):
             continue
         num = num+2**j
     return num
-
 def d2b(n,N):
     """ decimal to binary conversion"""
     b = [0]*N
@@ -8595,6 +8607,7 @@ def d2b(n,N):
     b.reverse()
     return b
     
+
 def add(x,y):
     """x and y are binary numbers. convert to decimal and add, and then convert the result back to binary"""
     n1 = b2d(x)
@@ -8773,7 +8786,6 @@ def find_io_perms(n):
     print 'computed po perm = ',out_perm
     print 'po perm = ',po
     
-    
 
 def inv_perm(p):
     pq = [-1]*len(p)
@@ -8789,5 +8801,2119 @@ def set_perms(n):
     random.shuffle(pi)
     po = range(n+1)
     random.shuffle(po)
+###################################
+
+######################### SPARSE #########################################
+""" The functions below are for manipulating sparse ISF functions """
+
+################# trensformers #####################
+
+def ttISF_cubeISF(ttISF):
+##    print len(ttISF)
+    res = []
+    for j in range(len(ttISF)):
+        ttt = ttISF[j] #jth PO ISF
+        if ttt[0] == m.const(1): #onset
+            newres = [[['-'*n_pi],[]]]
+        elif ttt[0] == m.const(0):
+            newres = [[[],'-'*n_pi]]
+        else: 
+            newres = [[sop(ttt[0]),sop(ttt[1])]]
+        res = res + newres
+##    print len(res)
+    return res
+
+def read_ISF_aig(name='test'):
+    global m,fname,n_pi
+    """  reads in an aig file containing ISFs [...,[ttonset,ttoffset],...]
+    and returns a list of tt's pairs """
+    m,res = pyaig.aig_to_tt_fname('%s_ISF.aig'%name)
+    return res
+
+def cubes(s):
+    """ converts a SOP in tt format into a sop"""
+    sp=s
+    c=[]  
+    while len(sp)>1:
+        n = sp.find(' ')
+        c=c+[sp[:n]]
+        sp=sp[n+3:]
+##        print c
+    return c
+
+def ttcube(cube):
+    """converts a cube into a truth table"""
+    t_t=m.const(1)
+    for j in range(len(cube)):
+        if cube[j]== '-':
+            continue
+        tj=m.var(j)
+        if cube[j] =='0':
+            tj=~tj
+        t_t = t_t & tj
+    return t_t
 
 
+def tt(sp): #sop_tt
+    """converts a sop into a tt"""
+    t_t = m.const(0)
+    for j in range(len(sp)):
+        t_t = t_t | ttcube(sp[j])
+    return t_t
+
+def sop(t_t): #tt_sop
+    """ converts a tt into an sop"""
+    s=t_t.SOP() # actually returns isop in internal format '--1-001 1'.
+    return cubes(s) #converts into '--1-001' format
+
+def s_stt(s): # sop_tv
+    """ creates a list of tt's from an sop"""
+    res = []
+    for j in range(len(s)):
+        res = res + [ttcube(s[j])]
+    return res
+
+def stt_s(stt): # tv_sop but makes sure tts are cubes
+    """ creates a sop from a list of truth tables """
+    res = []
+    for j in range(len(stt)):
+        res = res + [min_cube(stt[j])]
+
+def min_cube(tt):
+    """finds a minimum cube containing a all minterms of tt
+    N is the number of inputs. Same as tt.m.N?? """
+##    print sop(tt)
+    N = tt.m.N
+    res = ''
+    for j in range(N):
+        if m.var(j,1)&tt == tt:
+            res = res+'1'
+        elif m.var(j,0)&tt ==tt:
+            res = res+'0'
+        else:
+            res = res + '-'
+##        print j,res
+    return res
+
+def sttx(stt,j):
+    """gets the tt of stt (a list of tt but each is not necessarily a cube.)
+    except jth element"""
+    res = m.const(0)
+    for i in range(len(stt)):
+        if not i == j:
+            res = res | stt[i]
+    return res
+
+
+def str2v(s):
+    """ s is a cube (given by a string of 0,1,- and result is a list of 0,1,2
+    called a vector here"""
+    res = []
+    for j in range(len(s)):
+        if s[j] == '-':
+            res = res +[2]
+        elif s[j] == '0':
+            res = res + [0]
+        else:
+            res = res + [1]
+    return res
+
+def v2str(v):
+    res = ''
+    for j in range(len(v)):
+        if v[j] == 2:
+            res = res +'-'
+        elif v[j] == 0:
+            res = res + '0'
+        else:
+            res = res + '1'
+    return res
+
+def minus(x,y):
+    """ sop x minus sop y"""
+    tx=tt(x)
+    ty=tt(y)
+    res=tx&~ty
+    return sop(res)
+
+
+################ synthesis and verification ###############
+
+def synthesize(resyn_first=True):
+    abc('w temp.aig')
+    if resyn_first:
+        run_command('ps;&get;resyn2rs;ps;renode;eliminate -V 0;ps;bdd;sop;fx')
+        run_command('eliminate -V 0;ps;&get;&put;st;resyn2rs;ps;&get;&put;ps')
+    else:
+        run_command('ps;&get;renode;eliminate -V 0;ps;bdd;sop;fx')
+        run_command('eliminate -V 0;ps;&get;&put;st;resyn2rs;ps;&get;&put;ps')
+    
+def ISOP(tton,ttoff):
+    """ inputs are truth tables of a ISP, output is a sop """
+    res = m.isop(tton,~ttoff,0)
+##    print res[0]
+    ttr=res[1]
+    return sop(ttr)
+
+def sparse_syn_ver(name='test',ife=True):
+    global m,fname,n_pi,cost_mux,cost_dav,if_espresso
+    #set equivalent #ands for mux and davio constructions
+    cost_mux = 2 #temp
+    cost_dav = 4
+    if_espresso = ife
+    ############# synthesize
+    ti=time.time()
+    N_all_syn = []
+    tree_all = []
+    cost_all = []
+    res = sparsify(name)
+    final_cost = 0
+    for i in range(len(res)):
+        on = res[i][0] 
+        off = res[i][1]
+        fname = name + '_' + str(i)
+        print ' '
+        print '**** fname = %s ****'%fname
+        tr,cost_init,cost = mux_init(on,off) # mux can choose to implement the complement
+        tree_all = tree_all + [tr]
+        cost_all = cost_all + [cost]
+##        ppt(tr)
+        final_cost = final_cost + cost
+##        print '%s: time = %0.2f, initial cost = %d, final cost = %d'%(fname,(time.time()-ti),cost_init,cost)
+        ######### aet up verification
+        N_syn = tree2net(n_pi,tr)
+        write_net_to_aigfile(N_syn,'%s-syn.aig'%fname)
+        N_on = tree2net(n_pi,['+',on])
+        write_net_to_aigfile(N_on,'%s_on.aig'%fname)
+        N_off = tree2net(n_pi,['+',off])
+        write_net_to_aigfile(N_off,'%s_off.aig'%fname)
+        N_onoff = combine_two_nets(N_on,N_off)
+        write_net_to_aigfile(N_onoff,'%s_onoff.aig'%fname)
+    ##    on_po = res[0]
+    ##    off_po = res[1]
+        onoff_POs = list(N_onoff.get_POs())
+        ############ verify
+        check_syn_on_off(N_syn,N_onoff)
+        N_all_syn = combine_two_nets(N_all_syn,N_syn)
+    print '%s: time = %0.2f, final cost = %d'%(fname,(time.time()-ti),final_cost)
+    write_net_to_aigfile(N_all_syn,'%s-syn.aig'%name)
+    return N_all_syn,tree_all,cost_all
+
+def p_red(c):
+    t=0
+    for i in range(len(c)):
+        t = t + c[i]
+    return t
+
+def syn2():
+    abc('&get;&dch;&dc2;&put')
+    ps()
+
+def syn5():
+    abc('&get;&synch2;&syn2;&put')
+    ps()
+
+def esp(name='temp'):
+    global m,fname,n_pi,if_espresso
+    if_espresso=1
+    m,res = pyaig.aig_to_tt_fname('%s.aig'%name)
+    res0=res[0][0]
+    res1=res[0][1]
+    print 'on: ',len(sop(res0)),lit(sop(res0))
+    print 'off: ',len(sop(res1)),lit(sop(res1))
+    te = time.time()
+##    r1 = espresso(sop(res0),sop(res1))
+##    print 'espresso time = ',(time.time() - te), len(r1), lit(r1)
+    ttv = time.time()
+    print ''
+    r2 = tvespresso(tt_tv(res0),tt_tv(res1))
+    print 'tvespresso time = ',(time.time() - ttv), len(r2),
+    r2 = tv_sop(r2)
+    print lit(r2)
+    print ''
+    res0,res1 = res1,res0
+    te = time.time()
+##    r3 = espresso(sop(res0),sop(res1))
+##    print 'espresso time = ',(time.time() - te), len(r3), lit(r3)
+    print ''
+    ttv = time.time()
+    r4 = tvespresso(tt_tv(res0),tt_tv(res1))
+    print 'tvespresso time = ',(time.time() - ttv), len(r4),
+    r4 = tv_sop(r4)
+    print lit(r4)
+    return res1,res0,r2,r4
+
+                  
+def sparsify(name='test'):
+    """ ABC reads in test.aig and extracts output O. Then samples its onset and
+    offset by taking a 10% sample of minterms and creates an file 'test_sp_O.aig'
+    Returns sop of onset and sop of offset
+    """
+    global m,fname,n_pi
+    run_command('r %s.aig'%name)
+    npi = n_pis()
+    assert npi<17,'number of PIs exceeds 16'
+    p = 10
+    if npi > 12:
+        tabl=[9,9,8,8]
+        p = tabl[(npi-12)-1]
+##    ps()
+##    run_command('cone -O %d'%O)
+##    ps()
+    print 'collasping isf'
+    run_command('st;ps;clp;sparsify -N %d;st;ps'%p) #creates ISFs for each PO.
+##    ps()
+##    fname = '%s_%d'%(name,O)
+##    fname = name
+    print 'writing isf'
+    run_command('w %s_ISF.aig'%name)
+    print 'reading isf'
+    res = read_ISF_aig(name) #assumes on's,off's are interleaved POs. Here m is created
+    #res is a list of tt ISFs for each PO of the aig read in
+    n_pi = m.N # number of PIs
+##    print len(res)
+##    print len(res[0])
+    print 'converting tt to tv'
+    result = ttISF_cubeISF(res)
+    print 'done'
+    return result
+
+def syn2_iter():
+    best = n_ands()
+    abc('w temp_best.aig')
+    while True:
+        syn2()
+        if n_ands() < best:
+            abc('w temp_best.aig')
+            best = n_ands()
+            print best
+        else:
+            abc('r temp_best.aig')
+            return
+
+def syn5_iter():
+    best = n_ands()
+    abc('w temp_best.aig')
+    while True:
+        syn5()
+        if n_ands() < best:
+            abc('w temp_best.aig')
+            best = n_ands()
+            print best
+        else:
+            abc('r temp_best.aig')
+            return       
+        
+
+def comb(fn):
+    abc('r %s.aig;comb;w %s-comb.aig'%(fn,fn))
+
+
+def check_syn_on_off(N_synthesized, N_onoff):
+    """ Main verification. Verifies that the synthesized network f is correct.
+    Does this in two steps. f does not intersect off and ~f does not
+    intersect on. S.solve(a,b) is SAT if a and b intersect, i.e. the assumptions
+    a and b are compatible
+    """
+    OK=True
+    N, f, onset, offset = pre_check(N_synthesized, N_onoff)
+    S = pyzz.solver(N)
+    if S.solve( onset, ~f) == pyzz.solver.SAT:
+        print 'f does not cover the onset'
+        OK=False
+    if S.solve( f, offset ) == pyzz.solver.SAT:
+        print 'f intersects offset'
+        OK=False
+    if OK:
+        print "synthesis verified"
+
+def pre_check(N_synthesized, N_onoff):
+    """Creates net with PO's = (f,on,off)"""
+    N, (xlat_syn, xlat_onoff) = pyzz.combine_cones(N_synthesized, N_onoff)
+##    f = get_POs(xlat_syn,N_synthesized)
+    syn_POs = list(N_synthesized.get_POs())
+##    print syn_POs
+    f = xlat_syn[ syn_POs[0][0] ] # synthesized. The last [0] gets the fanin of the PO
+    onoff_POs = list(N_onoff.get_POs())
+##    print 'onoff_POs = ',onoff_POs
+    onset = xlat_onoff[ onoff_POs[0][0] ] #onset of ISF
+    offset = xlat_onoff[ onoff_POs[1][0] ] #offset of ISF
+    return N, f, onset, offset
+
+
+def check(c1,c0,x1,x0):
+    ontt = tt(x1)
+    offtt = tt(x0)
+    c1tt = tt(c1)
+    c0tt = tt(c0)
+    outtt = c1tt&~c0tt
+##    return ontt.implies(outtt) & offtt.implies(~outtt)
+    if not outtt&ontt == ontt:
+        print 'out does not cover on'
+        return False
+    if not ~outtt&offtt == offtt:
+        print 'out intersects off'
+        return False
+    return True
+
+def check_off(cube,offtt):
+    """ check if cube intersects the tt offset"""
+    tt_cube = ttcube(cube)
+    intt = tt_cube & offtt
+    #if cube does not intersect the offset, return 1
+    return m.const(0)== intt
+
+def covers(x,y):
+    """ x is a sop aand y a tt"""
+    return tt(x) & y == y
+
+###############################
+                            
+def d2b(d,N):
+    res = [0]*N
+    J = range(N)
+    J.reverse()
+    for j in J:
+##        print d >= 2**j
+        if d >= 2**j:
+            res[N-(j+1)] = 1
+            d=d-2**j
+##        print j,d,res
+    return res
+
+################ new espresso based entirely on truth tables ##############
+
+def sparse_syn_verv(name='test',ife=True):
+    global m,fname,n_pi,cost_mux,cost_dav,if_espresso
+    #set equivalent #ands for mux and davio constructions
+    cost_mux = 3
+    cost_dav = 4
+    if_espresso = ife
+    ############# synthesize
+    ti=time.time()
+    N_all_syn = []
+    tree_all = []
+    cost_all = []
+    res = sparsifyv(name) #res is a set if ISFs where each is [tvon,tvoff]
+    final_cost = 0
+##    print len(res[0])
+    for i in range(len(res)):
+        tvon = res[i][0]
+        tvoff=res[i][1]
+##        ton = or_red(res[i][0])
+##        toff = or_red(res[i][1])
+        fname = name + '_' + str(i)
+        print ' '
+        print '**** fname = %s ****'%fname
+        tr,cost_init,cost = mux_initv(tvon,tvoff) # mux can choose to implement the complement
+        tree_all = tree_all + [tr]
+        cost_all = cost_all + [cost]
+##        ppt(tr)
+        final_cost = final_cost + cost
+##        print '%s: time = %0.2f, initial cost = %d, final cost = %d'%(fname,(time.time()-ti),cost_init,cost)
+        ######### aet up verification
+        N_syn = tree2net(n_pi,tr)
+        write_net_to_aigfile(N_syn,'%s-syn.aig'%fname)
+        on = tv_sop(tvon)
+        off = tv_sop(tvoff)
+        N_on = tree2net(n_pi,['+',on])
+        write_net_to_aigfile(N_on,'%s_on.aig'%fname)
+        N_off = tree2net(n_pi,['+',off])
+        write_net_to_aigfile(N_off,'%s_off.aig'%fname)
+        N_onoff = combine_two_nets(N_on,N_off)
+        write_net_to_aigfile(N_onoff,'%s_onoff.aig'%fname)
+    ##    on_po = res[0]
+    ##    off_po = res[1]
+        onoff_POs = list(N_onoff.get_POs())
+        ############ verify
+        check_syn_on_off(N_syn,N_onoff)
+        N_all_syn = combine_two_nets(N_all_syn,N_syn)
+    print '%s: time = %0.2f, final cost = %d'%(fname,(time.time()-ti),final_cost)
+    write_net_to_aigfile(N_all_syn,'%s-syn.aig'%name)
+    return N_all_syn,tree_all,cost_all
+
+def mux_initv(tvon,tvoff):
+    """ initial call to create a cofactoring ttree with minimum cost"""
+    ttime = time.time()
+    tvpp = tvespresso(tvon,tvoff)
+    pp=tv_sop(tvpp)
+    cost = count_fact_sop(pp)
+    cost_init = cost
+    #begin the recursion
+    if cost > 0:
+        tree_r,cost = cof_recurv(tvon,tvoff,pp,cost)
+        print ''
+##        ppt(tree_r)
+    else:
+        tree_r = ['+',pp]
+    print 'time = %0.2f, initial cost = %d, final cost = %d'%((time.time()-ttime),cost_init,cost)
+##    print tree_r
+##    print_tree(tree_r)
+    return tree_r,cost_init,cost
+
+def tv_sop(tv):
+    s=[]
+    for i in range(len(tv)):
+        s = s + [tv_cube(tv[i])] 
+    return s
+
+def sparsifyv(name='test'):
+    """ ABC reads in test.aig and extracts output O. Then samples its onset and
+    offset by taking a 10% sample of minterms and creates an file 'test_sp_O.aig'
+    Returns sop of onset and sop of offset
+    """
+    global m,fname,n_pi
+    run_command('r %s.aig'%name)
+    npi = n_pis()
+    assert npi<17,'number of PIs exceeds 16'
+    p=10
+    if npi > 12:
+        tabl=[9,9,8,8]
+        p = tabl[(npi-12)-1]
+##    ps()
+##    run_command('cone -O %d'%O)
+##    ps()
+##    print 'collapsing'
+    run_command('st;ps;clp;sparsify -N %d;st;ps'%p) #creates ISFs for each PO.
+##    ps()
+##    fname = '%s_%d'%(name,O)
+##    fname = name
+##    print 'writing'
+    run_command('w %s_ISF.aig'%name)
+##    print 'reading'
+    res = read_ISF_aig(name) #assumes on's,off's are interleaved POs.
+    #Here m is created
+    #res is a list of tt ISFs for each PO of the aig read in
+    n_pi = m.N # number of PIs
+##    print len(res)
+##    print len(res[0])
+##    print 'converting to tv'
+    result = ttISF_tvISF(res)
+##    print 'done'
+    return result
+
+def cof_recurv(tvon,tvoff,sop_in,cost):
+    """ cofactoring wrt a single variable has to beat incoming cost
+    a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
+    the input is the ISF (ton,toff) to be implemented.
+    Incoming cost is an upper bound for implementation.
+    This returns (sop_in, cost) if there is no expansion that can beat cost.
+    Otherwise, it returns expansion tree for the ISF.
+    (tvon,tvoff) is the current ISF and sop_in is its SOP
+    """
+    if lit(tv_sop(tvon))<=1:#we are at a leaf because tvon is a single variable. don't do anything
+        return ['+',sop_in],cost
+    N=tvon[0].m.N
+##    ton = or_red(tvon)
+##    toff = or_red(tvoff)
+    tvon_init = tvon
+    sop_r,cost,sign =choose_signv(tvon,tvoff,sop_in,cost)
+##    assert ton==ton_init,'ton was switched internally'
+    if sign == '-':
+        tvon,tvoff = tvoff,tvon
+    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2v(tvon,tvoff)
+    # sign us '+' or '-'.  If '-' then ton and toff need to be switched
+    #method at this point is 'shannon'
+    cost_add = cost_mux
+    newcost1 = cost0+cost1+cost_add
+##    print cost,newcost1,cost1,cost0
+    if newcost1 >= cost: # try a different split choice
+        imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old = imin,list(leaf1),list(leaf0),cost1,cost0,method
+        imin,leaf1,leaf0,cost1,cost0,method = get_split_varv(tvon,tvoff)
+        newcost2 = cost0+cost1+cost_add
+        if newcost2 >= cost: #try davio
+            return [sign,sop_r],cost
+    #recur here since a variable exists, namely imin, whose two cofactors can be
+    #implemented as sop's plus a mux with less cost than the incoming 'cost'
+    if cost1 > 0: #a single literal cube has 0 cost
+        tvon1=tvcofactor(tvon,imin,1)
+        tvoff1=tvcofactor(tvoff,imin,1)
+        tree1,cost1 = cof_recurv(tvon1,tvoff1,leaf1,cost1)
+    else:
+        tree1=['+',leaf1]
+    if cost0 > 0:
+        tvon0=tvcofactor(tvon,imin,0)
+        tvoff0=tvcofactor(tvoff,imin,0)
+        tree0,cost0 = cof_recurv(tvon0,tvoff0,leaf0,cost0)
+    else:
+        tree0=['+',leaf0]
+    newcost = cost0+cost1+cost_add
+    if not cost >= cost0+cost1+cost_add:
+        print 'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
+    return [[imin,method,sign],tree1,tree0],cost0+cost1+cost_add
+
+def choose_signv(tvon,tvoff,pp1,cost1):
+    """Choose which phase to implement. Return best sop, its cost and if complementwas chosen"""
+##    pp1=espresso(on,off)
+    tvpp0=tvespresso(tvoff,tvon)
+    pp0 = tv_sop(tvpp0)
+##    cost1 = count_and_sop(pp1)
+    cost0 = count_fact_sop(pp0)
+    if cost1 <= cost0:
+        cost = cost1
+        pp = pp1
+        sign = '+'
+    else:
+        cost = cost0
+        pp = pp0
+        sign = '-'
+##    print 'sign = ',sign
+    return pp,cost,sign
+
+def get_split_varv(tvon,tvoff):
+    """ pick the variable and method for expansion with the least cost
+    Currently only Shannon is done here"""
+    global if_espresso
+    if_espresso_old = if_espresso
+    N=tvon[0].m.N
+##    print N
+    cost_min = 100000
+    if_espresso = 0
+    for i in range(N):
+##        print v_in(i,ton)
+        if not v_in(i,or_red(tvon)): # i does not exist in tvon
+            continue
+        cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,i)
+        cost_add = cost_mux
+        if not method == 'shannon':
+            cost_add = cost_dav
+##        print cost_add
+        cost = cost0+cost1+cost_add
+        if cost < cost_min:
+            leaf1_min = leaf1
+            leaf0_min = leaf0
+            cost_min = cost
+            cost0_min = cost0
+            cost1_min = cost1
+            imin=i
+            method_min = method
+    if if_espresso_old == 0:
+        return imin,leaf1_min,leaf0_min,cost1_min,cost0_min,method_min
+    else:
+        if_espresso = 1
+        cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,imin)
+        return imin,leaf1,leaf0,cost1,cost0,method
+
+def tvcofactor(tv,v,ph):
+    tvc=[]
+    for i in range(len(tv)):
+        tvc = tvc + [tv[i].cofactor(v,ph)]
+    return tvc
+
+def mux_vv(tvon,tvoff,v):
+    """ try a cofactoring variable v and return its costs and leaves"""
+    tvon1 = tvcofactor(tvon,v,1)
+    tvoff1 = tvcofactor(tvoff,v,1)
+##    tton1 = tton.cofactor(v,1)
+##    ttoff1 = ttoff.cofactor(v,1)
+    tvleaf1 = tvespresso(tvon1,tvoff1)
+    leaf1 = tv_sop(tvleaf1)
+    cost1=count_fact_sop(leaf1)
+    ################
+    tvon0 = tvcofactor(tvon,v,0)
+    tvoff0 = tvcofactor(tvoff,v,0)
+##    tton0 = tton.cofactor(v,0)
+##    ttoff0 =ttoff.cofactor(v,0)
+    tvleaf0 = tvespresso(tvon0,tvoff0)
+    leaf0 = tv_sop(tvleaf0)
+    cost0=count_fact_sop(leaf0)
+    return cost1,cost0,leaf1,leaf0,'shannon'
+
+def get_split_var2v(tvon,tvoff):
+    """ pick the variable and method for expansion with the most binateness
+    """
+    global if_espresso
+    N=tvon[0].m.N
+##    print N
+    cost_min = 100000
+    if_espresso_old = if_espresso
+    if_espresso = 0
+    tvepos = tvespresso(tvon,tvoff)
+    epos = tv_sop(tvepos)
+    imin = get_most_binate_var(epos)
+    if_espresso = if_espresso_old
+##    ton = or_red(tvon)
+##    toff = or_red(tvoff)
+    cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,imin)
+    return imin,leaf1,leaf0,cost1,cost0,method
+
+
+def tvespresso(tvon,tvoff):
+    """ tvon and tvoff are ISOPs and vectors of truth tables, one for each cube
+    """
+##    print len(tvon),len(tvoff)
+    if len(tvon) == 0: # on = [] so 0
+##        print ''
+        return tvon
+    if len(tvoff)==0: #no offset so return 1
+##        print ''
+        return m.const(1)
+##    time0=time.time()
+    if not if_espresso:
+        return v_ISOP_v(tvon,tvoff)
+##    tv1=list(tvon)        # new
+    tv1 = v_ISOP_v(tvon,tvoff) # new
+    tton = or_red(tvon)
+##    print sop(tton)
+    while True: #iterate until no reduction
+        size=len(tv1)
+        tv1old = tv1
+##        print 'before: ',len(tv1),litv(tv1)
+        tvon_red = reduce_tv(tv1,tton)
+##        print 'after ', len(tvon_red),litv(tvon_red)
+        tv1=two_levelv(tvon_red,tvoff)
+##        print 'two_level: ',len(tv1),litv(tv1)
+        if len(tv1)>=size:
+            break
+        tv1=shffle(tv1)
+    if len(tv1) > len(tv1old):
+        tv1=tv1old
+    elif len(tv1) == len(tv1old):
+        if litv(tv1old)<litv(tv1):
+            tv1=tv1old
+##    print 'time of espresso = ',time.time()-time0
+##    print 'espresso: cubes = %d, lits = %d'%size_of(t1)
+##    print ''
+    return tv1
+
+def max_reduce(tv,j):
+    tvj = tv[j]
+    ttrest = or_redx(tv,j)
+    tres = min_cubev(tvj&~ttrest)
+    return tres
+
+def essentials(sop_in,tton,ttoff):
+    """ max reduce each cube cj (cj = -1-1--0')to cj_max (cj_max = '-1-1100').
+    for each place where both have literals, try to expand cj_max.
+    If expansion exists, then not essential
+    """
+    tv = sop_tv(sop_in)
+    ess = []
+    N=m.N
+##    print N
+    for j in range(len(sop_in)):
+        ttj = tv[j] #tt of j the cube
+        ttj = ttj&tton # only interested in care onset
+        sj=sop_in[j]
+##        print ''
+##        print sj
+        ans = True
+        for i in range(N):
+            if sj[i] == '-':
+                continue
+            sji = int(sj[i]) # literal i in sj
+##            print i,sji,
+            assert m.var(i,sji)& ttj == ttj, 'ttj is not in %d_%s'%(i,sji)
+            ttjd1 = ttj.cofactor(i,sji) & m.var(i,not sji) # project along var i
+            ttjd1 = ttjd1&~ttoff # restrict to on/dc in dist-1 cube
+            ttj1 = ttjd1.cofactor(i,not sji) & m.var(i,sji) # project back along var i
+            ttj = ttj&~ttj1 # take away those that have a on/dc neighbor
+            if ttj == m.const(0): # j is not essential
+##                print '%d is not essential'%j
+                ans = False
+                break # go to next cube
+        if ans:
+            ess = ess + [j] # aomething left in jth cube, so essential
+    print ess
+    return sublist(sop_in,ess)
+
+def litv(tv):
+    count=0
+    for j in range(len(tv)):
+        count = count + lit_cubev(tv[j])
+    return count
+
+def lit_cubev(tvc):
+    count = 0
+    N = m.N
+    for i in range(N):
+        if m.var(i,0) & tvc == tvc or m.var(i,1) & tvc == tvc:
+            count = count + 1
+    return count
+
+def tv_cube(tvc): 
+    """ takes a tt, tvc, which should be a cube and creates a sop cube
+    """
+    res = ''
+    N = m.N
+    for i in range(N):
+        if m.var(i,0) & tvc == tvc:
+            res = res + '0'
+        elif m.var(i,1) & tvc == tvc:
+            res = res + '1'
+        else:
+            res = res + '-'
+    return res
+
+def v_ISOP_v(tvon,tvoff):
+    """ inputs are truth table vectors """
+    tton = or_red(tvon)
+    ttoff = or_red(tvoff)
+    res = m.isop(tton,~ttoff,0) #res[1] is a truth table, res[0] is a sop in set form
+    return set_tv(res[0])
+##    ttr=res[1]
+##    tvr = tt_tv(ttr)
+##    return tvr
+
+def set_tv(st):
+    """convert a set st into a tv"""
+    tv = []
+    for j in range(len(st)):
+        cj=st[j] #a set
+##        print cj
+        tcj=m.const(1)
+        for i in cj:
+            tcj =tcj&m.var(abs(i)-1,abs(i)==i)
+        tv = tv + [tcj]
+    return tv
+        
+
+def t_ISOP_v(tton,ttoff):
+    """ inputs are truth table vectors """
+    res = m.isop(tton,~ttoff,0)
+##    print res
+    return set_tv(res[0])
+##    ttr=res[1]
+##    tvr = tt_tv(ttr)
+##    return tvr
+
+def or_red(tv):
+    res = m.const(0)
+    for i in range(len(tv)):
+        res = res|tv[i]
+    return res
+
+def or_redx(tv,j):
+    res = m.const(0)
+    for i in range(len(tv)):
+        if not i == j:
+            res = res|tv[i]
+    return res
+
+def two_levelv(tvon,tvoff,rev=1):
+    """ only used in espresso. Makes primes and removes duplicates and selects
+    a subset in order of which cover the most remaining minterms of 'on' """
+    time0=time.time()
+    tvc1= []
+    ttc1=m.const(0)
+    ttoff=or_red(tvoff)
+    tton = or_red(tvon)
+    p1=make_primesv(tvon,ttoff)
+    if rev:
+        p1=p1+make_primesv(tvon,ttoff,1) #do in reverse order of variables
+    if not p1 == []:
+        tvp1=remove_dup(p1)
+    else:
+        tvp1 = p1
+##    print 'two_level1: ',len(tvp1)
+##    ttp1 = tt_of_p(p1) #vector of truth tables
+    while True: # iteratively include the cube that covers the most minterms not yet covered 
+        t1=tton&~ttc1 # onset still to be covered
+        if t1.count()==0:
+            break
+        j1,count1=max_countv(tvp1,t1)
+        tvc1 = tvc1 + [tvp1[j1]]
+        ttc1 = ttc1 | tvp1[j1]
+##        ttc1 = tton&ttc1 #restrict to onset
+##    print 'two-level2: ',len(tvc1)
+    tvc1=iredv(tvc1,ttc1)
+##    print 'two_level3: ',len(tvc1)
+##    print 'cubes = %d, lits = %d'%(len(c1),lit(c1))
+##    print 'time for two_level = ',time.time() - time0
+    return tvc1
+
+
+def make_primesv(tvx11,ttoff,rev=0):
+    """expands cubes of x1 against offset x0"""
+##    tvx1 = remove_dup(tvx11)
+    tvx1=tvx11
+    tvp=[]
+##    ttr=m.const(0)#
+    for j in range(len(tvx1)):
+##        if tvx1[j]&~ttr == m.const(0):#
+##            continue #
+        tvpj=make_primev(tvx1[j],ttoff,rev)
+##        tvp.append(tvpj)
+        tvp = tvp+[tvpj]
+##        ttr = ttr | tvpj #
+    return tvp
+
+def make_primev(tcube,ttoff,rev=0):
+    """ expands aa cube into a prime. off must be a tt"""
+    J = range(m.N)
+    if rev:
+        J.reverse()
+    res = tcube
+    for j in J:
+        cjex = res.cofactor(j,0) | res.cofactor(j,1)
+        if not ((cjex & ttoff) == m.const(0)):
+            continue
+        else: #expansion OK
+            res = cjex
+    return res
+
+def iredv(tvp,tton):
+    """ makes sop tvp irredundant relative to onset truth table"""
+    res = []
+    red = list(tvp)
+    for j in range(len(tvp)):
+        tvj=tvp[j]&tton #care part of cube j
+        if (tvj&~or_redx(red,j)) == m.const(0): # reduce jth cube to 0
+            red[j]=m.const(0)
+        else: #keep cube j
+            res = res + [tvp[j]]
+    return res
+
+def max_countv(tvs,tton):
+    """ find the cube that covers the most minterms in ontt"""
+    maxc = -1
+    maxj = -1
+    for j in range(len(tvs)):
+        ctt = tvs[j]
+##        ctt = tt([c])
+        tc = ctt&tton
+        count = tc.count()
+        if count > maxc:
+            maxc = count
+            maxj = j
+    return maxj,maxc
+
+def reduce_tv(tvs,tton):
+    """reduces cube in tvs to a minimum cube containing onset minterms not in rest of cubes
+    Replaces each ttcube with reduced ttube. Done in the given given order of cubes"""
+##    ontt = tt(on)
+    N = m.N
+##    stt = s_stt(s)
+    J = range(len(tvs))
+    J.reverse()
+    tvpp=list(tvs)
+    for j in J:
+        tvj = tvs[j]&tton & ~or_redx(tvpp,j) #care part of j not overed by rest
+##        tvj = tvj & ~sttx(stt,j)
+##        stt[j]=ttj
+        tvpp[j]=min_cubev(tvj) # put back reduced cube for j
+    return tvpp
+
+def min_cubev(tt):
+    """finds a minimum cube containing a all minterms of tt
+    N is the number of inputs. Same as tt.m.N?? """
+##    print sop(tt)
+    N = tt.m.N
+##    print sop(tt),
+    res = m.const(1)
+    for j in range(N): # for each variable
+        if m.var(j,1)&tt == tt: #all minterms in x_j face
+            res = res & m.var(j,1)
+        elif m.var(j,0)&tt == tt: # all in ~x_j face
+            res = res & m.var(j,0)
+        else: #points on both faces so merge both faces (cube will have a '-' in jth spot
+            continue
+##        print j,res
+##    print sop(res)
+    return res
+
+def ttISF_tvISF(ttISF):
+    """ converts a list of ISFs, each given as a tt, to a list of ISFs each given as
+    a [tv for on, tv for off]
+    """
+##    print len(ttISF)
+    res = []
+    for j in range(len(ttISF)):
+        ttj = ttISF[j] #jth PO ISF
+        if ttj[0] == m.const(1): #onset
+            newres = [m.const(1),m.const(0)]
+        elif ttj[0] == m.const(0):
+            newres = [m.const(0),m.const(1)]
+        else: 
+            newres = [[tt_tv(ttj[0]),tt_tv(ttj[1])]] 
+        res = res + newres
+##    print len(res)
+##    print len(res[0])
+    return res
+
+def tt_tv(tt):
+##    s = sop(tt)
+##    tv=t_ISOP_v(tt,tt)
+    tv = sop_tv(sop(tt))
+    return tv
+
+def sop_tv(s):
+    """ converts a sop into a tv"""
+    res = []
+    for j in range(len(s)):
+        res = res + [ttcube(s[j])]
+    return res
+
+################# espresso ##########                            
+
+def espresso(on,off):
+    """ on and off are SOPs
+    returns a SOP """
+    if len(on) == 0: # on = [] so 0
+        return on
+    if len(off)==0: #no offset so return 1
+        n_v = len(on[0])
+        return ['%s'%'-'*n_v]
+##    time0=time.time()
+    if not if_espresso:
+        return ISOP(tt(on),tt(off))
+    s1=list(on)
+    while True: #iterate until no reduction
+        size=len(s1)
+        s1old = s1
+        s1=two_level(reduce_sop(s1,on),off)
+        if len(s1)>=size:
+            break
+        s1=shffle(s1)
+    if len(s1) > len(s1old):
+        s1=s1old
+    elif len(s1) == len(s1old):
+        if lit(s1old)<lit(s1):
+            s1=s1old
+##    print 'time of espresso = ',time.time()-time0
+##    print 'espresso: cubes = %d, lits = %d'%size_of(t1)
+    return s1
+
+def expand(cube,j):
+    """expands a cube along the jth direction by putting in a '-' there """
+    res=''
+    for i in range(len(cube)):
+        if i == j:
+            res = res + '-'
+        else:
+            res = res+cube[i]
+    return res
+
+
+def make_primes(x11,x0,rev=0):
+    """expands cubes of x1 against offset x0"""
+    offtt = tt(x0)
+    x1 = remove_dup(x11)
+    p=[]
+    for j in range(len(x1)):
+        pj=make_prime(x1[j],offtt,rev)
+        p = p+[pj]
+    return p
+
+def make_prime(cube,offtt,rev=0):
+    """ expands aa cube into a prime. off must be a tt"""
+    res = str(cube)
+    J = range(len(res))
+    if rev:
+        J.reverse()
+    for j in J:
+        if res[j] == '-':
+            continue
+        cj=expand(res,j)
+        if check_off(cj,offtt):
+            res = cj
+    return res
+
+def ired(p,ontt):
+    """ makes sop p irredundant relative to onset truth table"""
+    tvp = []
+    tvp = sop_tv(p)
+    rs = iredv(tvp,ontt)
+    res = tv_sop(rs)
+    return res
+##    red = list(p)
+##    for j in range(len(p)):
+##        tj=tt([p[j]])&ontt# onset of cube j
+##        tt
+##        if tj&~tt(res) == m.const(0):
+##            continue
+##        else:
+##            res=res+[p[j]]
+##    return res
+
+def tt_of_p(p):
+    res = []
+    for i in range(len(p)):
+        res = res + [ttcube(p[i])]
+    return res
+                   
+
+def two_level(on,off,rev=1):
+    """ only used in espresso. Makes primes and removes duplicates and selects
+    a subset in order of which cover the most remaining minterms of 'on' """
+    time0=time.time()
+    c1 =[]
+    ttc1=m.const(0)
+    ontt=t1=tt(on)
+    p1=make_primes(on,off)
+    if rev:
+        p1=p1+make_primes(on,off,1)
+    p1=remove_dup(p1)
+    ttp1 = tt_of_p(p1) #vector of truth tables
+    while True: # iteratively include the cube that covers the most minterms not yet covered 
+        t1=ontt&~ttc1 # onset still to be covered
+        if t1.count()==0:
+            break
+        j1,count1=max_count(ttp1,t1)
+        c1 = c1 + [p1[j1]]
+        ttc1 = ttc1 | ttp1[j1]
+        ttc1 = ontt&ttc1
+    c1=ired(c1,ttc1)
+##    print 'cubes = %d, lits = %d'%(len(c1),lit(c1))
+##    print 'time for two_level = ',time.time() - time0
+    return c1
+
+
+def reduce_sop(s,on):
+    """reduces cube in s to a minimum cube containing onset minterms not in rest of cubes
+    Replaces each cube with reduced cube. Done in the given order of cubes"""
+    ontt = tt(on)
+    N = len(s[0])
+    stt = s_stt(s)
+    J = range(len(s))
+    J.reverse()
+    pp=list(s)
+    for j in J:
+        ttj = stt[j]&ontt
+        ttj = ttj & ~sttx(stt,j)
+        stt[j]=ttj
+        pp[j]=min_cube(ttj)
+    return pp
+        
+ 
+def remove_dup(p):
+    d = list(p)
+    d.sort()
+    res = []
+    for j in range(len(d)-1):
+        if not d[j] == d[j+1]:
+            res = res + [d[j]]
+    res = res + [d[len(d)-1]]
+    return res
+
+def shffle(x):
+    J=range(len(x))
+    res = [-1]*len(x)
+    t=-2
+    for j in J:
+        t = (t+2)
+        if t > len(J)-1:
+            t=1
+        res[t] = x[j]
+    return res
+
+def reexpand(c1,c0,on,off):
+    tc1=tt(c1)
+    tc0=tt(c0)
+    ton=tt(on)
+    toff=tt(off)
+    d1=espresso(sop(tc1&ton),sop(toff&~(toff&tc1)))
+    d0=espresso(sop(toff&tc0),on)
+    return d1,d0
+
+######### counting ###############
+    
+def max_count(tts,ontt):
+    """ find the cube that covers the most minterms in ontt"""
+    maxc = -1
+    maxj = -1
+    for j in range(len(tts)):
+        ctt = tts[j]
+##        ctt = tt([c])
+        tc = ctt&ontt
+        count = tc.count()
+        if count > maxc:
+            maxc = count
+            maxj = j
+    return maxj,maxc
+
+def print_sizes(c1,c0):
+##    print c0
+    print 'c1: cubes, lit = ',len(c1),lit(c1)
+    print 'c0: cubes, lit = ',len(c0),lit(c0)
+
+def size_of(s):
+    res = len(s),lit(s)
+##    print 'cubes = %d, lits = %d'%res
+    return res
+                   
+def lit(s):
+    count=0
+    for j in range(len(s)):
+        count = count + lit_cube(s[j])
+    return count
+
+def lit_cube(c):
+    count = 0
+    for i in range(len(c)):
+        if c[i] == '-':
+            continue
+        count = count + 1
+    return count
+
+def count_and_sop(sop):
+    """ #cubes -1 + sum_i (lit(cub_i) - 1) =
+    #cubes -1 - #cubes + lits(sop)"""
+##    if sop == []:
+##        return -2
+    c = lit(sop) -1
+    return c
+
+def count_fact_sop(sop):
+    if len(sop) <= 1:
+        return count_and_sop(sop)
+    count2,count1,count0 = binate_count(sop)
+    jmax,count,sign  = get_max(count1,count0)
+    if count == 1:
+        return count_and_sop(sop)
+    else:
+        lsop,rsop = fctr(sop,jmax,sign)
+##        print lsop,rsop
+        cL = count_fact_sop(lsop) +1
+        cR = count_fact_sop(rsop)
+        return cR + cL +1
+
+def fact(sop):
+    if len(sop) <= 1:
+        return sop
+    count2,count1,count0 = binate_count(sop)
+    jmax,count,sign  = get_max(count1,count0)
+    if count == 1:
+        return sop
+    else:
+        lsop,rsop = fctr(sop,jmax,sign)
+##        print lsop,rsop
+        cL = fact(lsop)
+        if len(rsop) == 0:
+            return [[jmax,sign],[cL,[]]]
+        cR = fact(rsop)
+        return [[jmax,sign],[cL,cR]]
+
+def fctr(sop,j,sign):
+    """ factors literal (j,sign) out of SOP. Returns two sop's, Lis
+    those with literal reoved and R the remaining unchanged."""
+    c = ['0','1']
+    ph = c[sign]
+    L=R=[]
+    for i in range(len(sop)):
+        si=sop[i]
+        if si[j] == ph:
+            sij = subst_string(si,j,'-')
+            L=L + [sij]
+        else:
+            R=R + [si]
+    return L,R
+
+def subst_string(s,j,ch):
+    """ substitutes string 'ch' for jth element in string  """
+    res = ''
+    ls = list(s)
+    for i in range(len(s)):
+        if i == j:
+            res = res + ch
+        else:
+            res = res + ls[i]
+    return res
+
+def get_max(count1,count0):
+    """ finds the index of the max number in two lists and
+    which list contained the max  """
+    max0_count=max1_count = -1
+    J = range(len(count1))
+    for j in J:
+        if count1[j] > max1_count:
+            max1_count = count1[j]
+            j1max = j
+        if count0[j] > max0_count:
+            max0_count = count0[j]
+            j0max = j
+    if max1_count >= max0_count:
+        return j1max,max1_count,1
+    else:
+        return j0max,max0_count,0
+
+#######################
+        
+def choose_sign(ton,toff,pp1,cost1):
+    """Choose which phase to implement. Return best sop, its cost and if complementwas chosen"""
+##    pp1=espresso(on,off)
+    pp0=espresso(sop(toff),sop(ton))
+##    cost1 = count_and_sop(pp1)
+    cost0 = count_fact_sop(pp0)
+    if cost1 <= cost0:
+        cost = cost1
+        pp = pp1
+        sign = '+'
+    else:
+        cost = cost0
+        pp = pp0
+        sign = '-'
+##    print 'sign = ',sign
+    return pp,cost,sign
+                
+######################## pretty printing a tree ###############
+
+def ppt_all(t,c):
+    for i in range(len(t)):
+        print ' '
+        print 'PO = %d, cost = %d'%(i,c[i])
+        ppt(t[i])
+    
+def ppt(tree):
+    """header fir pretty printing tree"""
+    global tab
+    tab = '   '
+    pprint_tree('',tree)
+
+def pprint_tree(spacer,tree):
+    """ recursive subroutine for pretty printing tree"""
+##    print 'tab = "%s"'%str(tab)
+##    print 'spacer = "%s"'%str(spacer)
+    if tree == []:
+        print spacer+str(tree)
+        return
+    space = spacer+tab
+    header = tree[0]
+    if len(header)==3 and type(header[0]) == int: # a cofactoring
+        print spacer+str(header)
+        pprint_tree(space,tree[1])
+        pprint_tree(space,tree[2])
+    else:
+        if header == '+' or header == '-': # a tree_sop
+            print spacer+header
+            s=tree[1] #take away tree_sop header
+            pprint_tree(space,s)
+            return
+        s=tree # no tree header
+        #we have either sop or fact_sop
+        if s == [] or lit(s) == 0:
+            print spacer+'[]'
+##            print 'ss = ',s
+            return
+        if type(s[0][0]) == str: # a sop
+            #factor it
+            f = fact(s)
+            pp_fact(spacer,f)
+        else: # we have an error
+            print 'Error ',
+            print s
+            return
+
+def pp_fact(spacer,f,tabb='    '):
+    global tab
+    if f == []:
+##        print 'f = empty'
+        return
+    if type(f[0]) == str:
+        print_sop(spacer,f)
+        return
+##    print '***f = ',f
+    tab = tabb
+    space = spacer+tab
+    if type(f[0][0]) == int: # first of pair is a literal
+        print spacer,f[0]
+        pp_fact(space,f[1][0],tab) # quotient
+        pp_fact(spacer,f[1][1],tab) # remainder
+        return
+    elif type(f[0][0][0]) == str: # first of pair is an sop
+        print_sop(spacer,f[0])
+        if f[1] == []:
+            return
+        if type(f[1][0][0]) == str:
+            print ''
+            print_sop(spacer,f[1]) #second is a sop
+            return
+        else: # second is a fact
+            pp_fact(spacer,f[1],tab)
+            return
+    else: # first is a factor 
+        pp_fact(spacer,f[0],tab)
+        #check second
+        if f[1] == []:
+            return
+        if type(f[1][0]) == str:
+            print_sop(spacer,f[1])
+            return
+        if f[1] == []:
+            return
+        pp_fact(spacer,f[1],tab)
+        return
+                
+        
+
+
+def print_sop(space,s):
+    for i in range(len(s)):
+        print space,s[i]
+##################
+            
+def mux_init(on,off):
+    """ initial call to create a cofactoring ttree with minimum cost"""
+    ttime = time.time()
+    pp = espresso(on,off)
+    cost = count_fact_sop(pp)
+    cost_init = cost
+    #begin the recursion
+    if cost > 0:
+        tree_r,cost = cof_recur(tt(on),tt(off),pp,cost)
+        print ''
+##        ppt(tree_r)
+    else:
+        tree_r = ['+',pp]
+    print 'time = %0.2f, initial cost = %d, final cost = %d'%((time.time()-ttime),cost_init,cost)
+##    print tree_r
+##    print_tree(tree_r)
+    return tree_r,cost_init,cost
+
+def get_split_var(ton,toff):
+    """ pick the variable and method for expansion with the least cost
+    Currently only Shannon is done here"""
+    global if_espresso
+    if_espresso_old = if_espresso
+    N=ton.m.N
+##    print N
+    cost_min = 100000
+    if_espresso = 0
+    for i in range(N):
+##        print v_in(i,ton)
+        if not v_in(i,ton): # i does not exist in ton
+            continue
+        cost1,cost0,leaf1,leaf0,method = mux_v(ton,toff,i)
+        cost_add = cost_mux
+        if not method == 'shannon':
+            cost_add = cost_dav
+##        print cost_add
+        cost = cost0+cost1+cost_add
+        if cost < cost_min:
+            leaf1_min = leaf1
+            leaf0_min = leaf0
+            cost_min = cost
+            cost0_min = cost0
+            cost1_min = cost1
+            imin=i
+            method_min = method
+    if if_espresso_old == 0:
+        return imin,leaf1_min,leaf0_min,cost1_min,cost0_min,method_min
+    else:
+        if_espresso = 1
+        cost1,cost0,leaf1,leaf0,method = mux_v(ton,toff,imin)
+        return imin,leaf1,leaf0,cost1,cost0,method
+
+def get_split_var2(ton,toff):
+    """ pick the variable and method for expansion with the most binateness
+    """
+    global if_espresso
+    N=ton.m.N
+##    print N
+    cost_min = 100000
+    s_on = sop(ton)
+    s_off = sop(toff)
+    if_espresso_old = if_espresso
+    if_espresso = 0
+    s_epos = espresso(s_on,s_off)
+    imin = get_most_binate_var(s_epos)
+    if_espresso = if_espresso_old
+    cost1,cost0,leaf1,leaf0,method = mux_v(ton,toff,imin)
+    return imin,leaf1,leaf0,cost1,cost0,method
+ 
+
+def binate_count(ss):
+    n_v = len(ss[0])
+    count1 = [0]*n_v
+    count0 = [0]*n_v
+    count2 = [0]*n_v
+    for j in range(len(ss)):
+        cubej = ss[j]
+##        print cubej
+        for i in range(n_v):
+            cji = cubej[i]
+            if cji == '-':
+                count2[i] = count2[i] + 1
+            elif cji == '1':
+                count1[i] = count1[i] + 1
+            else:
+                count0[i] = count0[i] + 1
+##        print count1,count0
+    return count2,count1,count0
+
+def get_most_binate_var(ss):
+    count2,count1,count0=binate_count(ss)
+    abmin=cmin=100000
+    for j in range(len(count1)):
+        c2 = count2[j]
+        ab = abs(count1[j]-count0[j])
+        if  c2 < cmin:
+            jmin=j
+            cmin = c2
+            abmin = ab
+        if c2 == cmin and ab < abmin:
+            jmin=j
+            cmin = c2
+            abmin = ab
+    return jmin                       
+    
+def cof_recur(ton,toff,sop_in,cost):
+    """ cofactoring wrt a single variable has to beat incoming cost
+    a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
+    the input is the ISF (ton,toff) to be implemented.
+    Incoming cost is an upper bound for implementation.
+    This returns (sop_in, cost) if there is no expansion that can beat cost.
+    Otherwise, it returns expansion tree for the ISF.
+    (ton,toff) is the current ISF and sop_in is its SOP
+    """
+##    print ''
+##    print 'in: ',sop_in
+##    if leaf == []:
+##        print 'leaf is empty'
+    if lit(sop(ton))<=1:#we are at a leaf because ton is a single variable. don't do anything
+##        print ''
+##        print 'out: ',['+',sop_in]
+        return ['+',sop_in],cost
+    N=ton.m.N
+    ton_init = ton
+    sop_r,cost,sign =choose_sign(ton,toff,sop_in,cost)
+    assert ton==ton_init,'ton was switched internally'
+    if sign == '-':
+        ton,toff = toff,ton
+##        eoffon= espresso(sop(ton),sop(toff))
+##        if not eoffon == sop_r:
+##            print eoffon,sop_r
+##            assert False,'ERROR'
+##    imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
+    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2(ton,toff)
+    # sign us '+' or '-'.  If '-' then ton and toff need to be switched
+    #method at this point is 'shannon'
+    cost_add = cost_mux
+    newcost1 = cost0+cost1+cost_add
+##    print cost,newcost1,cost1,cost0
+    if newcost1 >= cost: # try a different split choice
+        imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old = imin,list(leaf1),list(leaf0),cost1,cost0,method
+        imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
+        newcost2 = cost0+cost1+cost_add
+##        print cost,newcost2,cost1,cost0
+        if newcost2 >= cost: #try davio
+            return [sign,sop_r],cost
+##            #go back to first set
+##            if newcost1 < newcost2:
+##                print 'switching back to first set'
+##                imin,leaf1,leaf0,cost1,cost0,method = imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old
+######### Trmporarily disabling Davio ##########
+####    or leaf1 == [] or leaf0 == []: #we are at a leaf. don't do anything
+##            print 'Trying Davio'
+##            leaf2,cost2 = try_davio(ton,toff,imin) #just trying last var chosen
+##            print 'f2, cost2 = ',
+##            print leaf2,cost2
+##            newcost_dav = cost2+min(cost0,cost1)+cost_dav
+##            print 'Davio would give newcost = %d'%newcost_dav
+##            print cost,newcost_dav,cost2,cost1,cost0
+##            if newcost_dav >= cost:
+##                print 'out: ',[sign,sop_r]
+##                print ''
+##                return [sign,sop_r],cost
+##            else:#davio wins. decide + or -
+##                print 'Davio wins'
+##                print 'ton = ',ton
+##                print 'toff = ',toff
+##                print 'leaf0 = ',leaf0
+##                print 'leaf1 = ',leaf1
+##                print 'leaf2 = ',leaf2 
+##                cost_add = cost_dav
+##                if cost0 <= cost1:
+##                    method = '+davio'
+##                    leaf1 = leaf0
+####                    leaf0 = list(leaf2)
+##                    cost1 = cost0
+####                    cost0 = cost2
+##                else:
+##                    method = '-davio'
+##                leaf0 = leaf2
+##                cost0 = cost2
+##    print 'splitting variable = %d, method = %s'%(imin,method)
+    #recur here since a variable exists, namely imin, whose two cofactors can be
+    #implemented as sop's plus a mux with less cost than the incoming 'cost'
+##    print 'costs before: ',cost,cost1_min,cost0_min
+    if cost1 > 0: #a single literal cube has 0 cost
+        ton1=ton.cofactor(imin,1)
+        toff1=toff.cofactor(imin,1)
+        tree1,cost1 = cof_recur(ton1,toff1,leaf1,cost1)
+##        print ""
+##        print 'out: ',tree1
+    else:
+        tree1=['+',leaf1]
+    if cost0 > 0:
+        ton0=ton.cofactor(imin,0)
+        toff0=toff.cofactor(imin,0)
+        tree0,cost0 = cof_recur(ton0,toff0,leaf0,cost0)
+##        print ''
+##        print 'out: ',tree0
+    else:
+        tree0=['+',leaf0]
+##    print 'initial cost = %d, final cofactor costs = %d,%d'%(cost,cost1,cost0)
+    newcost = cost0+cost1+cost_add
+    if not cost >= cost0+cost1+cost_add:
+        print 'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
+##    print 'cof_recur returns: ',[sop_in1,sop_in0],cost0+cost1+cost_add
+##    print 'out: ',[[imin,method,sign],tree1,tree0]
+##    print ''
+    return [[imin,method,sign],tree1,tree0],cost0+cost1+cost_add
+
+def try_davio(ton,toff,v):
+    """ f,f0,f1,f2 """
+    f = [toff,ton]
+    f0 = [f[0].cofactor(v,0),f[1].cofactor(v,0)]
+    f1 = [f[0].cofactor(v,1),f[1].cofactor(v,1)]
+    f2 = ixor(f0,f1)
+    f2_sop = espresso(sop(f2[1]),sop(f2[0]))
+    cost = count_fact_sop(f2_sop)
+    return f2_sop,cost
+
+def mux_v(tton,ttoff,v):
+    """ try a cofactoring variable v and return its costs and leaves"""
+    tton1 = tton.cofactor(v,1)
+    ttoff1 = ttoff.cofactor(v,1)
+    leaf1 = espresso(sop(tton1),sop(ttoff1))
+    cost1=count_fact_sop(leaf1)
+    ################
+    tton0 = tton.cofactor(v,0)
+    ttoff0 =ttoff.cofactor(v,0)
+    leaf0 = espresso(sop(tton0),sop(ttoff0))
+    cost0=count_fact_sop(leaf0)
+    return cost1,cost0,leaf1,leaf0,'shannon'
+
+
+def v_in(v,ttr):
+    """ check if variable is in the support of truth table ttr """ 
+    ttr1 = ttr.cofactor(v,1)
+    ttr0 = ttr.cofactor(v,0)
+    if ttr0 == ttr1:
+        return False
+    else:
+        return True
+
+def random_subset(lst,r):
+    res = []
+    for j in range(len(lst)):
+        if random.random() < r:
+            res=res +[lst[j]]
+    return res
+
+def if_lit(tr):
+    if len(tr)< 2:
+        return False
+    return tr[1] in [0,1]
+
+
+
+###################################################
+""" sig methods, which are methods to combine  and create signals in a network
+    A sig is a signal in a net"""
+import pyzz 
+
+##def start_network(n_in):
+##    """starts a new netlist with n_in PIs"""
+##    net = pyzz.netlist()
+##    PIs = [net.add_PI() for _ in xrange(n_in)]
+##    return net,PIs
+
+
+def write_net_to_aigfile(net,aigfile):
+    net.write_aiger(aigfile)
+
+def tree2net(n_in,tree=[]):
+    """ takes a single output tree and creates an equivalent network
+    and writes it out as name.aig
+    Returns new net with n_in PIs and a single PO """
+    net = pyzz.netlist() #create a new network
+    PIs = [net.add_PI() for _ in xrange(n_in)]
+    sig=tree2sig(net,tree)
+    net.add_PO(fanin=sig)
+##    net.write_aiger('%s.aig'%name)
+##    print 'network written as %s.aig'%name
+    return net
+    
+                                      
+def cube2sig(net,cube):
+    """ create the sig for a cube in network net
+    Inputs of cube assumed to be PIs of net """
+    if ((not '0' in cube) and (not '1' in cube)):
+        return net.get_True()
+    PIs = PIsOf(net)
+    conj = []
+    for j in range(len(cube)):
+        if cube[j] == '-':
+            continue
+        elif cube[j] == '1':
+            conj = conj + [PIs[j]]
+        else:
+            conj = conj + [~PIs[j]]
+    sig = pyzz.conjunction(net,conj)
+    return sig
+
+def sop2sig(net,sop):
+##    PIs = PIsOf(net)
+    if len(sop) == 0:
+        return ~net.get_True() # i.e. False
+    disj = []
+    for j in range(len(sop)):
+        disj = disj + [cube2sig(net,sop[j])]
+    sig = pyzz.disjunction(net,disj)
+    return sig
+
+def tree2sig(net,tree):
+    """ creates a sig from a tree. A tree is either a 3-tuple or a sop"""
+    if tree == []:
+        return ~net.get_True()
+    sign = tree[0]
+    if type(tree[0]) == str: # tree is a sop
+        sig = sop2sig(net,tree[1])
+        if tree[0] == '-':
+            sig = ~sig
+        return sig                    
+    PIs=PIsOf(net)
+    variable = PIs[tree[0][0]] #splitting variable
+    method = tree[0][1]
+    sign = tree[0][2] # '-' means complement was implemented
+    N1 = tree2sig(net,tree[1])
+    N2 = tree2sig(net,tree[2])
+    if method == 'shannon': #N1 = f_1, N2 = f_0
+        sig = variable.ite(N1,N2)
+        if sign == '-':
+            sig = ~sig
+        return sig
+    elif method == '+davio': #N1 = f_0, N2 = f_2
+        return N1^(variable&N2)
+    elif method == '-davio': #N1 = f_1, N2 = f_2
+        return N1^(N2&~variable)
+    else:
+        assert False, 'ERROR: Not known method'
+    
+def PIsOf(net):
+    return [x for x in net.get_PIs()]
+
+#########################
+#methods for verifying result
+
+"""combine_cones, creates a new network N from networks N1 and N2 and creates
+translators from names in N1 to names in N and similarly for N2. """
+
+
+def list_po_sizes():
+    abc('&get')
+    for j in range(n_pos()):
+        abc('&put')
+        abc('cone -O %d'%j)
+        print '%d: '%j,
+        ps()
+
+def combine_nets(nets):
+    """ nets is a list of networks"""
+    N = combine_nets(nets[0],nets[1])
+    for i in range(len(nets)-2):
+        N = combine_two_nets(N,net[i+2])
+    return N
+
+def combine_two_nets(N_1,N_2):
+    """ combines two networks and returns the new network and its POs
+    For the moment each net can have only a single PO """
+    if N_1 == []:
+        return N_2
+    if N_2 == 0:
+        return N_1
+    N, (xlat_1, xlat_2) = pyzz.combine_cones(N_1, N_2)
+    POs_N1 = list(N_1.get_POs())
+##    POs = []
+    for j in range(len(POs_N1)):
+        PO_fanin = xlat_1[ POs_N1[j][0] ] # The last [0] gets the fanin of the PO
+##        POs = POs + [N.add_PO(fanin=PO_fanin)]
+        N.add_PO(fanin=PO_fanin)
+    POs_N2 = list(N_2.get_POs())
+    for j in range(len(POs_N2)):
+        PO_fanin = xlat_2[ POs_N2[j][0] ] # The last [0] gets the fanin of the PO
+##        POs = POs + [N.add_PO(fanin=PO_fanin)]
+        N.add_PO(fanin=PO_fanin)
+    return N
+
+
+################# manipulating ISFs ###############
+##""" an ISF is [offset,onset] where each is a truthtable."""
+##def iand(f,g):
+##    """ an ISF is [offset,onset]"""
+##    return [(f[0]|g[0]),(f[1]&g[1])]
+##
+##def ior(f,g):
+##    """ same as inot(iand(inot(f),inot(g)))"""
+####    res1 = inot(iand(inot(f),inot(g)))
+##    res2 = [(f[0]&f[0]),(f[1]|g[1])]
+####    if not res1 == res2:
+####        print 'DeMorgan does work on ISPs:'
+####        #res 1 = %s, res2 = %s'%(res1,res2)
+##    return res2
+##
+##def inot(f):
+##    return [f[1],f[0]]
+
+def ixor(f,g):
+    """ f and g are ISPs"""
+##    fb = inot(f)
+##    gb = inot(g)
+##    y1 = iand(fb,g)
+##    y2 = iand(f,gb)
+##    return ior(y1,y2)
+    res0=~f[0]&g[0] | f[0]&~g[0]
+    res1 = ~f[1]&g[1] | f[1]&~g[1]
+    return [res0,res1]
+
+##def icofactor(f,x):
+##    f_x1 = [f[0].cofactor(x,1),f[1].cofactor(x,1)]
+##    f_x0 = [f[0].cofactor(x,0),f[1].cofactor(x,0)]
+##    return [f_x0,f_x1]
+##        
+##
+##def ipdavio(x,f):
+##    cof = icofactor(f,x)
+##    f0 = cof[0]
+##    f1 = cof[1]
+##    f2 = ixor(f0,f1)
+##    res = ixor(f0,x&f2)
+##    return resultF
+##
+
+
+##def build_miters(N1, N2):
+##    """builds translators from names in N1 to names in N and similarly
+##    similarly for N2. Then XORs corresponding POs"""
+##    N, (xlat1, xlat2) = pyzz.combine_cones(N1, N2)
+##    N1_pos = [ xlat1[po[0]] for po in N1.get_POs() ]
+##    N2_pos = [ xlat2[po[0]] for po in N2.get_POs() ]
+##    return N, [ f1^f2 for f1, f2 in zip(N1_pos, N2_pos) ]
+
+
+##def build_check_netlist(N_synthesized, N_onoff):
+##    """ add two POs, that if UNSAT states that onset does not intersect ~f and
+##    offset does not inteersect f
+##    """
+##    N, f, onset, offset = pre_check(N_synthesized, N_onoff)
+##    N.add_PO( fanin=(onset&~f) ) #first PO
+##    N.add_PO( fanin=(offset&f) ) #second PO
+##    return N
+
+
+##def get_POs(xlat,net):
+##    net_pos = list(net.get_POs())
+##    return xlat[net_pos[0][0]]
+##
+
+##def print_tree(tr):
+##    """ prints a tree by enumerating a lits of paths in depth-first order"""
+##    if if_lit(tr) or len(tr) == 0:
+##        #tr is a lit, don't print
+##        return
+##    elif if_lit(tr[0]): # at a leaf so print
+##        print tr
+##        return
+##    else:
+##        print_tree(tr[0])
+##        print_tree(tr[1])
+
+    
+##def mux_var(on,off,v):
+##    N=len(v)
+##    res = [-1]*(2**N)
+##    J = range(2**N)
+##    for j in J:
+##        ph=d2b(j,len(v))
+##        con,coff = cofactors(on,off,v,ph)
+####        print lit(con),lit(coff)
+####        print con,coff
+##        if lit(con)==0:
+##            res[j]=[0]
+##        elif lit(coff)==0:
+##            res[j]=[1]
+##        else:
+##            res[j]=espresso(con,coff)
+####    print 'and count = ',count_and(res)
+##    return res
+       
+##def cof_pairs(on,off):
+##    N = len(on[0])
+##    cmin=1000000
+##    imin = -1
+##    for i in range(N):
+##        pp = mux_var(on,off,[i])
+##        count = count_and(pp)
+##        if count < cmin:
+##            cmin = count
+##            ppmin = pp
+##            imin=i
+##            cof=[imin]
+##    for j in range(N):
+##        if imin == j:
+##            continue
+##        pp = mux_var(on,off,[imin,j])
+##        count = count_and(pp)
+##        if count < cmin:
+##            cmin = count
+##            ppmin = pp
+##            cof=[imin,j]
+##    return cof,ppmin
+##    
+            
+        
+##def log2(ss):
+##    assert ss <= 2**5, 'integer exceeds limit'
+##    if ss<=1:
+##        return 0
+##    elif ss<=2:
+##        return 1
+##    elif xx<= 4:
+##        return 2
+##    elif ss<= 8:
+##        return 3
+##    elif xx <= 16:
+##        return 4
+##    return 5
+
+
+##def ite2sig(net,ite):
+##    PIs = PIsOf(net)
+##    control = PIs[0]
+##    t = tree2sig(ite[1])
+##    e = tree2sig(ite[2])
+##    sig = control.ite(t,e)
+##    return sig
+
+##def tree2sig(net,tree):
+##    """ creates an sig from a tree. A tree is either a 3-tuple or a sop"""
+##    if tree == []:
+##        return ~net.get_True()
+##    if type(tree[0]) == str: # tree is a sop
+##        return sop2sig(net,tree)
+##    else:
+##        PIs = PIsOf(net)
+##        control = PIs[tree[0]]
+##        t = tree2sig(net,tree[1])
+##        e = tree2sig(net,tree[2])
+##        sig = control.ite(t,e)
+##        return sig
+
+##def mux_v2(tton,ttoff,v):
+##    """ try a cofactoring variable v and return its costs and leaves
+##    It chooses the best method of [shannon,+davio or -davio] for expansion """
+##    on_1=ton1 = tton.cofactor(v,1)
+##    off_1=toff1 = ttoff.cofactor(v,1)
+##    leaf1 = espresso(sop(ton1),sop(toff1)) #first espresso for f_1
+##    cost1=count_and_sop(leaf1)
+##    ################
+##    on_0=ton0 = tton.cofactor(v,0)
+##    off_0=toff0 =ttoff.cofactor(v,0)
+##    leaf0 = espresso(sop(ton0),sop(toff0)) #second espresso for f_0
+##    cost0=count_and_sop(leaf0)
+##    ################ creating f_1 XOR f_0
+####    toff2 = (ton1 | toff0)&(toff1 | ton0)
+####    #need to compute on and off for
+####    #(f2_on,f2_off) = (on_1,on_0) XOR (off_1,off_0)
+####    off2 = toff2 = (off_0 & ~on_1)|((~on_0) & off_1)
+####    on2 = ton2 = ((~on_0) & on_1) | (on_0 & ~on_1)
+####    ##    print sop(ton2),sop(toff2)
+####    leaf2 = espresso(sop(ton2),sop(toff2)) #third espresso for f_2
+####    cost2 = count_and_sop(leaf2)
+####    ##### temp to disable davio
+##    cost2 = 100000
+##    ######
+##    ################
+##    ##    print cost0,leaf0,cost1,leaf1,cost2,leaf2
+##    cost10 = cost0 + cost1
+##    cost12 = cost1 + cost2
+##    cost02 = cost0 + cost2
+##    if cost10 < cost12:
+##        if cost10 < cost02: #shannon
+####            print [cost1,cost0,leaf1,leaf0,'shannon']
+##            return cost1,cost0,leaf1,leaf0,'shannon'
+##        elif cost02 < cost12: # poaitive davio
+####            print [cost0,cost2,leaf0,leaf2,'+davio']
+##            return cost0,cost2,leaf0,leaf2,'+davio'
+##        else: # negative davio
+####            print [cost1,cost2,leaf1,leaf2,'-davio']
+##            return cost1,cost2,leaf1,leaf2,'-davio'
+##    elif cost12 < cost02:
+####        print [cost1,cost2,leaf1,leaf2,'-davio']
+##        return cost1,cost2,leaf1,leaf2,'-davio'
+##    else:
+####        print [cost0,cost2,leaf0,leaf2,'+davio']
+##        return cost0,cost2,leaf0,leaf2,'+davio'
+
+##def count_and(ss):
+##    res = 3*((2*len(ss))-1) # 3 is the assumed cost of a mux
+##    for j in range(len(ss)): # for each cofactor
+##        cj=0
+##        ssj=ss[j]
+##        if ssj == [1] or ssj == [0]:
+##            continue
+##        cj=cj+len(ssj)-1 # number of or's
+##        for i in range(len(ssj)):
+##            ssji=ssj[i] #ith cube if cofactor
+##            cj = cj+(lit(ssji)-1) # number of ands to implement a cube
+##        res = res+cj
+##    return res
+
+##def reduce_primes(p,on):
+##    res = []
+##    on_tt = tt(on)
+##    pp=list(p)
+##    J = range(len(p))
+##    J.reverse()
+##    for j in J:
+##        c=pp[j]
+##        cr = max_reduce(c,pp[:j]+pp[j+1:],on_tt)
+##        pp[j] = cr
+##    return pp
+##
+##def max_reduce(c,pr,ontt):
+##    """ maximally reduce cube c against primes pr where cube c is deleted. ontt is a tt of onset"""
+##    cv = str2v(c)
+##    ttpr = tt(pr)
+##    for j in range(len(cv)):
+##        if not cv[j] == 2:
+##            continue
+##        cv[j]=1
+##        cs=v2str(cv)
+##        ttcs = tt([cs])
+##        if ((ttcs|ttpr)&ontt) == ontt:
+####        if covers([cs]+pr,ontt):
+##            continue
+##        cv[j]=0
+##        cs=v2str(cv)
+##        ttcs=tt([cs])
+####        if covers([cs]+pr,ontt):
+##        if ((ttcs|ttpr)&ontt) == ontt:
+##            continue
+##        else:
+##            cv[j]=2
+##    return v2str(cv)
+    
+
+##def cofactors(tton,ttoff,v,ph):
+##    ttonv=tton
+##    ttoffv=ttoffi
+##    for i in range(len(v)):
+##        ttonv=ttonv.cofactor(v[i],ph[i])
+##        ttoffv=ttoffv.cofactor(v[i],ph[i])
+##    return ttonv,ttoffv
+
+
+##def three_level(on,off,ifc0=1,rev=0):
+##    """ construct a 3 level network by assigning cubes covering x1 to the left
+##    and assigning cubes covering x0 to the right. Each set of cubes is ored and
+##    the right result is inverted. These are then anded to form the output. """
+##    time0=time.time()
+##    c1 =c0=[]
+##    ttc1=ttc0=m.const(0)
+##    s1=list(on)
+##    ontt=t1=tt(s1)
+##    s0=list(off)
+##    offtt=t0=tt(s0)
+##    rat0=-1
+##    last= first = 1
+##    p0=make_primes(s0,on)
+##    if rev:
+##        p0=p0+make_primes(s0,on,1)
+##    p0=remove_dup(p0)
+##    p0=ired(p0,tt(off))
+##    while True:
+##        if last == 1:
+##            t1=ontt&~ttc1 # onset still to be covered
+##            if t1.count()==0:
+##                break
+##            s1=sop(t1)
+##        if last == 0 or first:
+##            t0=offtt&~ttc0 # offset still to be covered
+##            if t0.count()==0:
+##                break
+##            s0=sop(t0)    
+##        if last == 1:
+##            p1=make_primes(s1,s0)
+##            if rev:
+##                p1=p1+make_primes(s1,s0,1)
+##            p1=remove_dup(p1)
+####        if last == 0 or first:
+####            p0=make_primes(s0,on)
+####            if rev:
+####                p0=p0+make_primes(s0,on,1)
+####            p0=remove_dup(p0)
+##        if last == 1:
+##            j1,count1=max_count(p1,t1)
+####        print 'count1 = ',count1
+##        if last == 0 or first:
+##            j0,count0=max_count(p0,t0)
+####        print 'count0 = ',count0
+##        if last == 1:
+##            rat1=float(count1)/float(t1.count())
+##        if last == 0 or first:
+##            rat0=float(count0)/float(t0.count())
+####        if count1 >= count0 or not ifc0:
+##        if rat1>= rat0 or not ifc0:
+##            last = 1
+##            c1 = c1 + [p1[j1]]
+####            c1 = make_primes(sop(tt(c1)&ontt),s0)
+##            ttc1 = ontt&tt(c1)
+##        else:
+##            last = 0
+##            c0 = c0 + [p0[j0]]
+####            c0 = make_primes(sop(tt(c0)&offtt),on) #do not let offset encroach on onset
+##            ttc0 = offtt&tt(c0)
+##        first = 0
+####        ttc1off = tt(c1)&offtt
+####        assert ttc1off&ttc0 == ttc1off,'off minterm in c1 not in c0'
+####    return ired(c1,ttc1),ired(c0,ttc0)
+####    print c0,c1
+##    print_sizes(c1,c0)
+##    c1=ired(c1,ttc1)
+##    print_sizes(c1,c0)
+##    print check(c1,c0,on,off)
+####    c0=ired(c0,ttc0)
+##    c0=ired(c0,tt(c1)&tt(off))
+##    print_sizes(c1,c0)
+##    print check(c1,c0,on,off)
+##    d1=esp(c1,c0,on,off)
+##    print_sizes(d1,c0)
+##    print check(d1,c0,on,off)
+##    d1off = tt(d1)&tt(off)
+##    d0=ired(c0,d1off)
+##    print_sizes(d1,d0)
+##    print check(d1,d0,on,off)
+##    print 'time for three_level = ',time.time()-time0
+##    return d1,d0
+
+
+##def cofactors(on,off,v,ph):
+##    tton=tt(on)
+##    ttoff=tt(off)
+##    for j in range(len(v)):
+##        tton=tton.cofactor(v[j],ph[j])
+##        ttoff=ttoff.cofactor(v[j],ph[j])
+##    return sop(tton),sop(ttoff)
+##
+
+
+##def contained_in(x,y):
+##    """x and y are sops"""
+##    tx=tt(x)
+##    ty=tt(y)
+##    txy=tx&ty
+##    if txy== tx:
+##        return True
+##    else:
+##        return False
+##    
+##def contain(p,off):
+##    """creates a 01 vector indicating if cube j of offset is covered by the other primes"""
+##    res=[0]*len(p)
+##    for j in range(len(p)):
+##        c = off[j]
+##        cm = p[:j]+p[j+1:]
+##        if contained_in(c,cm):
+##            res[j]=1
+##    return res
+
+##def esp(c1,c0,on,off):
+##    d1=ired(make_primes(c1,sop(tt(off)&~tt(c0))),tt(on))
+##    offset = tt(off) & ~tt(c0)
+##    onset = tt(on) & tt(c1)
+##    p1=make_primes(sop(onset),sop(offset))
+##    d1 = ired(p1,onset)
+##    return d1
