@@ -32,7 +32,7 @@ int n_bmc_frames();
 int prob_status(); 1 = unsat, 0 = sat, -1 = unsolved
 int cex_get()
 int cex_put()
-int run_command(char* cmd);
+int run_commandhar* cmd);
 int n_nodes();
 int n_levels();
 
@@ -140,7 +140,7 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
            'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
-           'iprove','BMC_J2','aplitprove','pdrm_exact']
+           'iprove','BMC_J2','splitprove','pdrm_exact']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
@@ -202,7 +202,8 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(iprove)(t))",
          "(pyabc_split.defer(bmc_j2)(t))",
          "(pyabc_split.defer(splitprove)(t))",
-         "(pyabc_split.defer(pdrm_exact)(t))"
+         "(pyabc_split.defer(pdrm_exact)(t))",
+##         "(pyabc_split.defer(bmc_par_jmps)(t))"
           ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
@@ -249,10 +250,11 @@ def initialize():
     global init_time, last_cex, last_winner, trim_allowed, t_init, sec_options, sec_sw
     global n_pos_before, n_pos_proved, last_cx, pord_on, temp_dec, abs_time, gabs, gla,m_trace
     global smp_trace,hist,init_initial_f_name, skip_spec, t_iter_start,last_simp, final_all, scorr_T_done
-    global last_gap
+    global last_gap, last_gasp_time
     xfi = x_factor = 1  #set this to higher for larger problems or if you want to try harder during abstraction
     max_bmc = -1
     last_time = 0
+    last_gasp_time = 2001 #set to conform to hwmcc12
     j_last = 0
     seed = 113
     init_simp = 1
@@ -283,6 +285,7 @@ def initialize():
     inf = 10000000
     last_simp = [inf,inf,inf,inf]
     final_all = 1
+    final_all = 0
     scorr_T_done = 0
     last_gap = 0
 ##    abs_time = 100
@@ -341,7 +344,8 @@ def set_abs_method():
     print 'ifbip = %d, abs_time = %d, gabs = %d, if_no_bip = %d, gla = %d'%(ifbip,abs_time,gabs,if_no_bip,gla)
     
 def ps():
-    print_circuit_stats()
+    out = print_circuit_stats()
+    return out
 
 def iprove(t=100):
     abc('iprove')
@@ -350,7 +354,7 @@ def dsat(t=100):
     abc('dsat')
 
 def splitprove(t=900):
-    run_command('&get;&splitprove -v -P 30 -L 5 -T 15')
+    abc('&get;&splitprove -v -P 30 -L 5 -T 15')
 
 def n_real_inputs():
     """This gives the number of 'real' inputs. This is determined by trimming away inputs that
@@ -378,7 +382,12 @@ def sleep(t):
     return Undecided
         
 def abc(cmd):
+    """ executes an ABC command and represses all outputs"""
     abc_redirect_all(cmd)
+
+def xa(cmd):
+    """ executes an ABC command and shows all outputs"""
+    return run_command( cmd )
 
 def abc_redirect( cmd, dst = redirect.null_file, src = sys.stdout ):
     """This is our main way of calling an ABC function. Redirect, means that we suppress any output from ABC"""
@@ -634,7 +643,7 @@ def aigs_pp(op='push', typ='reparam'):
         hist.append(typ)
         abc('w %s_aigs_%d.aig'%(init_initial_f_name,len(hist)))
     if op == 'pop':
-        print hist
+##        print hist
         abc('cexsave') #protect current cex from a read
         abc('r %s_aigs_%d.aig'%(init_initial_f_name,len(hist)))
         abc('cexload')
@@ -753,7 +762,10 @@ def write_file(s):
     ps()
     abc('w '+ss)
 
-def bmc_depth():
+def get_max_bmc():
+    return get_bmc_depth()
+
+def get_bmc_depth():
     """ Finds the number of BMC frames that the latest operation has used. The operation could be BMC, reachability
     interpolation, abstract, speculate. max_bmc is continually increased. It reflects the maximum depth of any version of the circuit
     including g ones, for which it is known that there is not cex out to that depth."""
@@ -764,13 +776,16 @@ def bmc_depth():
     else:
         b = n_bmc_frames()
     if b > max_bmc:
-        max_bmc = b
+        set_max_bmc(b)
         report_bmc_depth(max_bmc)
     return max_bmc
 
 def null_status():
     """ resets the status to the default values but note that the &space is changed"""
     abc('&get;&put')
+
+def set_bmc_depth(b):
+    set_max_bmc(b)
 
 def set_max_bmc(b):
     """ Keeps increasing max_bmc which is the maximum number of time frames for
@@ -796,20 +811,22 @@ def print_circuit_stats():
         a = n_nodes()
         s = 'Nodes'
 ##    b = max(max_bmc,bmc_depth()) # don't want to do this because bmc_depth can change max_bmc
-    b = max_bmc
+    b = get_max_bmc()
     c = cex_frame()
     if b>= 0:
         if c>=0:
-            print 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth=%d,CEX depth=%d'%(i,o,l,s,a,b,c)
+            out ='PIs=%d,POs=%d,FF=%d,%s=%d,max depth=%d,CEX depth=%d'%(i,o,l,s,a,b,c)
         elif is_unsat():
-            print 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth = infinity'%(i,o,l,s,a)
+            out = 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth = infinity'%(i,o,l,s,a)
         else:
-            print 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth=%d'%(i,o,l,s,a,b)            
+            out = 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth=%d'%(i,o,l,s,a,b)            
     else:
         if c>=0:
-            print 'PIs=%d,POs=%d,FF=%d,%s=%d,CEX depth=%d'%(i,o,l,s,a,c)
+            out = 'PIs=%d,POs=%d,FF=%d,%s=%d,CEX depth=%d'%(i,o,l,s,a,c)
         else:
-            print 'PIs=%d,POs=%d,FF=%d,%s=%d'%(i,o,l,s,a)
+            out = 'PIs=%d,POs=%d,FF=%d,%s=%d'%(i,o,l,s,a)
+    print out
+    return out
 
 def is_unsat():
     if prob_status() == 1:
@@ -846,76 +863,76 @@ def med_simp():
     ps()
     print 'time = %0.2f'%(time.time() - x)
 
-def simplify_old(M=0):
-    """Our standard simplification of logic routine. What it does depende on the problem size.
-    For large problems, we use the &methods which use a simple circuit based SAT solver. Also problem
-    size dictates the level of k-step induction done in 'scorr' The stongest simplification is done if
-    n_ands < 20000. Then it used the clause based solver and k-step induction where |k| depends
-    on the problem size """
-    set_globals()
-    abc('&get;&scl;&lcorr;&put')
-    p_40 = False
-    n =n_ands()
-    if n >= 70000 and not '_smp' in f_name:
-##        abc('&get;&scorr -C 0;&put')
-        scorr_T(30)
-        ps()
-    n =n_ands()
-    if n >= 100000:
-        abc('&get;&scorr -k;&put')
-        ps()
-    if (70000 < n and n < 150000):
-##        print '1'
-        p_40 = True
-        abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
-##        print 2'
-        ps()
-        n = n_ands()
-##        if n<60000:
-        if n < 80000:
-            abc("&get;&scorr -F 2;&put;dc2rs")
-            ps()
-        else: # n between 60K and 100K
-            abc("dc2rs")
-            ps()
-    n = n_ands()
-##    if (30000 < n  and n <= 40000):
-    if (60000 < n  and n <= 70000):
-        if not p_40:
-            abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
-            abc("&get;&scorr -F 2;&put;dc2rs")
-            ps()
-        else:
-            abc("dc2rs")
-            ps()
-    n = n_ands()
-##    if n <= 60000:
-    if n <= 70000:
-        abc('scl -m;drw;dretime;lcorr;drw;dretime')
-        ps()
-        nn = max(1,n)
-        m = int(min( 70000/nn, 16))
-        if M > 0:
-            m = M
-        if m >= 1:
-            j = 1
-            while j <= m:
-                set_size()
-                if j<8:
-                    abc('dc2')
-                else:
-                    abc('dc2rs')
-                abc('scorr -C 1000 -F %d'%j) #was 5000 temporarily 1000
-                if check_size():
-                    break
-                j = 2*j
-                print 'ANDs=%d,'%n_ands(),
-                if n_ands() >= .98 * nands:
-                     break
-                continue
-            if not check_size():
-                print '\n'
-    return get_status()
+##def simplify_old(M=0):
+##    """Our standard simplification of logic routine. What it does depende on the problem size.
+##    For large problems, we use the &methods which use a simple circuit based SAT solver. Also problem
+##    size dictates the level of k-step induction done in 'scorr' The stongest simplification is done if
+##    n_ands < 20000. Then it used the clause based solver and k-step induction where |k| depends
+##    on the problem size """
+##    set_globals()
+##    abc('&get;&scl;&lcorr;&put')
+##    p_40 = False
+##    n =n_ands()
+##    if n >= 70000 and not '_smp' in f_name:
+####        abc('&get;&scorr -C 0;&put')
+##        scorr_T(30)
+##        ps()
+##    n =n_ands()
+##    if n >= 100000:
+##        abc('&get;&scorr -k;&put')
+##        ps()
+##    if (70000 < n and n < 150000):
+####        print '1'
+##        p_40 = True
+##        abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
+####        print 2'
+##        ps()
+##        n = n_ands()
+####        if n<60000:
+##        if n < 80000:
+##            abc("&get;&scorr -F 2;&put;dc2rs")
+##            ps()
+##        else: # n between 60K and 100K
+##            abc("dc2rs")
+##            ps()
+##    n = n_ands()
+####    if (30000 < n  and n <= 40000):
+##    if (60000 < n  and n <= 70000):
+##        if not p_40:
+##            abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
+##            abc("&get;&scorr -F 2;&put;dc2rs")
+##            ps()
+##        else:
+##            abc("dc2rs")
+##            ps()
+##    n = n_ands()
+####    if n <= 60000:
+##    if n <= 70000:
+##        abc('scl -m;drw;dretime;lcorr;drw;dretime')
+##        ps()
+##        nn = max(1,n)
+##        m = int(min( 70000/nn, 16))
+##        if M > 0:
+##            m = M
+##        if m >= 1:
+##            j = 1
+##            while j <= m:
+##                set_size()
+##                if j<8:
+##                    abc('dc2')
+##                else:
+##                    abc('dc2rs')
+##                abc('scorr -C 1000 -F %d'%j) #was 5000 temporarily 1000
+##                if check_size():
+##                    break
+##                j = 2*j
+##                print 'ANDs=%d,'%n_ands(),
+##                if n_ands() >= .98 * nands:
+##                     break
+##                continue
+##            if not check_size():
+##                print '\n'
+##    return get_status()
 
 def simplify(M=0,N=0):
     """Our standard simplification of logic routine. What it does depende on the problem size.
@@ -929,12 +946,17 @@ def simplify(M=0,N=0):
     set_globals()
     smp_trace = smp_trace + ['&scl;&lcorr']
     abc('&get;&scl;&lcorr;&put')
+##    abc('scl') # RKB temp
+    if n_latches == 0:
+        return get_status()
     p_40 = False
     n =n_ands()
     if N == 0 and n >= 70000 and not '_smp' in f_name:
 ##        abc('&get;&scorr -C 0;&put')
 ##        print 'Trying scorr_T'
         scorr_T(30)
+        if n_latches() == 0:
+            return get_status()
         ps()
     n =n_ands()
     if n >= 100000:
@@ -945,6 +967,7 @@ def simplify(M=0,N=0):
         p_40 = True
         smp_trace = smp_trace + ['&dc2;dretime;&lcorr;&dc2;dretime;&scorr;&fraig;&dc2;dretime']
         abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
+##        abc("&get;&dc2;&put;dretime;&get;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
         ps()
     n = n_ands()
 ##    if (30000 < n  and n <= 40000):
@@ -952,6 +975,7 @@ def simplify(M=0,N=0):
         if not p_40:
             smp_trace = smp_trace + ['&dc2;dretime;&lcorr;&dc2;dretime;&scorr;&fraig;&dc2;dretime']
             abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
+##            abc("&get;&dc2;&put;dretime;&get;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
             smp_trace = smp_trace + ['&scorr -F 2;dc2rs']
             abc("&get;&scorr -F 2;&put;dc2rs")
             ps()
@@ -1034,7 +1058,6 @@ def eq_simulate(t):
         w = 255
         for k in range(9):
             f = min(f *2, 3500)
-            r = f/20
             w = max(((w+1)/2)-1,1)
 ##            abc('&sim3 -R %d -W %d -N %d'%(r,w,seed))
             abc('&sim -F %d -W %d -N %d'%(f,w,seed))
@@ -1255,8 +1278,8 @@ def abstractb():
     if is_unsat():
         return Unsat
 ##    set_max_bmc(NBF)
-    NBF = bmc_depth()
-    print 'Abstraction good to %d frames'%max_bmc
+    NBF = get_bmc_depth()
+    print 'Abstraction good to %d frames'%NBF
     #note when things are done in parallel, the &aig is not restored!!!
     abc('&r -s %s_greg.aig; &w initial_greg.aig; &abs_derive; &put; w initial_gabs.aig; w %s_gabs.aig'%(f_name,f_name))
     set_max_bmc(NBF)
@@ -1298,7 +1321,7 @@ def initial_abstract_old():
     set_globals()
     time = max(1,.1*G_T)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(bmc_depth())
+    set_max_bmc(get_bmc_depth())
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -1317,7 +1340,7 @@ def initial_abstract(t=100):
     time = max(1,.1*G_T)
     time = min(time,t)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(bmc_depth())
+    set_max_bmc(get_bmc_depth())
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -1331,7 +1354,7 @@ def initial_abstract(t=100):
 ##    print cmd
     print 'Running initial_abstract with bob=%d,stable=%d,time=%d,depth=%d'%(b,s,t,f)
     abc(cmd)
-    bmc_depth()
+##    get_bmc_depth()
 ##    pba_loop(max_bmc+1)
     abc('&w %s_greg.aig'%f_name)
     return max_bmc
@@ -1342,10 +1365,10 @@ def abs_m():
     nl = n_abs_latches() #initial set of latches
     c = 2*G_C
     t = x_factor*max(1,2*G_T) #total time
-    bmd = bmc_depth()
+    bmd = get_bmc_depth()
     if bmd < 0:
         abc('bmc3 -T 2') #get initial depth estimate
-        bmd = bmc_depth()
+        bmd = get_bmc_depth()
     f = bmd
     abc('&get')
     y = time.time()
@@ -1437,9 +1460,9 @@ def ssm(options=''):
 
 def ssmg():
     return ssm('g')
+
 def ssmf():
     return ssm('f')
-
 
 def ss(options=''):
     """
@@ -1457,7 +1480,7 @@ def ss(options=''):
         if not '_spec' in f_name:
             write_file('spec') #make sure we do not overwrite original file
         read_file_quiet_i('%s'%f_name) #this resets f_name and initial_f_name etc.
-        print '\n*************Executing super_prove ************'
+        print '\n************* Executing super_prove ************'
         print 'New f_name = %s'%f_name
         result = super_prove()
         if result[0] == 'SAT':
@@ -1867,7 +1890,7 @@ def speculate(t=0):
     funcs = [eval('(pyabc_split.defer(initial_speculate)("%s"))'%sec_options)]
     funcs = create_funcs(J,10000)+funcs #want other functins to run until initial speculate stops
     mtds = sublist(methods,J) + ['initial_speculate'] #important that initial_speculate goes last
-    print mtds
+##    print mtds
     res = fork_last(funcs,mtds)
     print 'init_spec return = ',
     print res
@@ -2074,7 +2097,7 @@ def speculate(t=0):
                 PO = set_cex_po(1) # test against the &space.
             print 'cex_PO is %d,  '%PO,
             if (-1 < PO and PO < (n_pos_before-n_pos_proved)):
-                print 'Found cex in original output = %d'%cex_po()
+                print 'Found cex in original output %d'%cex_po()
                 print 'Refinement time = %0.2f'%(time.time() - ref_time)
                 return Sat_true
             if PO == -1:
@@ -2126,7 +2149,7 @@ def speculate(t=0):
                     abc('&r -s %s_gsrm.aig'%f_name)
                     PO = set_cex_po(1) #testing the & space
                     if (-1 < PO and PO < (n_pos_before-n_pos_proved)):
-                        print 'Found cex in original output = %d'%cex_po()
+                        print 'Found cex in original output %d'%cex_po()
                         print 'Refinement time = %0.2f'%(time.time() - ref_time)
                         return Sat_true
                     if PO == -1:
@@ -2287,14 +2310,16 @@ def super_deep_s(tt=900):
     report_bmc_depth(mx)
     return mx
 
-def simple(t=10000,no_simp=0):
+def simple(t=10000,no_simp=0,check_trace=False):
     y = time.time()
 ##    pre_simp()
     if not no_simp:
-        prove_part_1()
+##        prove_part_1(frames_2=False) #do not use try_frames_2
+        prove_part_1(frames_2=True) #use try_frames_2
         if is_sat():
-            unmap_cex()
-            report_cex(1)
+            if check_trace:
+                unmap_cex()
+                report_cex(1)
             return ['SAT']+['pre_simp']
         if is_unsat():
             return ['UNSAT']+['pre_simp']
@@ -2305,8 +2330,9 @@ def simple(t=10000,no_simp=0):
     J = modify_methods(J)
     result = verify(J,t)
     if is_sat():
-        unmap_cex()
-        report_cex(1)
+        if check_trace:
+            unmap_cex()
+            report_cex(1)
 ##    add_pord('%s by %s'%(result[0],result[1])
     return [RESULT[result[0]]] + [result[1]]
 
@@ -2580,7 +2606,7 @@ def reconcile_all(lst, rep_change):
 ##    abc('rpm')
 ##    result = 0
 ##    if n_pis() < .5*pis_before:
-##        bmc_before = bmc_depth()
+##        bmc_before = get_bmc_depth()
 ##        #print 'running quick bmc to see if rpm is OK'
 ##        t = max(1,.1*G_T)
 ##        #abc('bmc3 -C %d, -T %f'%(.1*G_C, t))
@@ -2604,12 +2630,12 @@ def verify(J,t):
     t = int(max(1,t))
     J = modify_methods(J)
     mtds = sublist(methods,J)
-    print mtds
+##    print mtds
     #print J,t
     F = create_funcs(J,t)
     (m,result) = fork_break(F,mtds,'US') #FORK here
 ##    result = fork_break(F,mtds,'US') #FORK here
-    print result
+##    print result
 ##    assert result[0] == get_status(),'result: %d, status: %d'%(result[0],get_status())
     return result
 
@@ -2643,13 +2669,21 @@ def check_sat(t=2001):
         print 'circuit is not combinational'
         return Undecided
 ##    print 'Circuit is combinational - checking with dsat'
+    L = list_const_pos()
+    if not count_less(L,0) == len(L):
+        if 0 in L and not 1 in L:
+            return Unsat
+        elif 1 in L and not 0 in L:
+            return Sat_true
+        else:
+            assert False,'both 0 and 1 in L'
     abc('&get') #save the current circuit
     abc('orpos')
     J = combs+slps
     mtds = sublist(methods,J)
 ##    print mtds
     F = create_funcs(J,t)
-    (m,result) = fork_last(F,mtds) #FORK here
+    (m,result) = fork(F,mtds) #FORK here
 ##    print '%s: '%mtds[m],
 ##    smp_trace = smp_trace + ['%s'%mtds[m]]
     res = prob_status()
@@ -2759,7 +2793,7 @@ def test_no_simp():
     ra = float(n_ands())/float(last_simp[3])
     val = min(ri,ro,rl,ra)
     if val < .95:
-        print 'simplification worthwhile'
+        print 'simplification seems worthwhile'
         return False
     print 'simplification not worthwhile'
     return True
@@ -2787,6 +2821,7 @@ def pre_simp(n=0,N=0):
         ps()
         if n_latches() == 0:
 ##            print '# latches = 0'
+            chk_sat = 1
             break
         if (n_ands() > 200000 or n_latches() > 50000 or n_pis() > 40000):
             smp_trace = smp_trace + ['scorr_T']
@@ -2794,8 +2829,9 @@ def pre_simp(n=0,N=0):
             ps()
         if ((n_ands() > 0) or (n_latches()>0)):
             res =a_trim()
-            print hist
+##            print hist
         if n_latches() == 0:
+            chk_sat = 1
             break
         status = get_status()
         if (n == 0 and (not '_smp' in f_name) or '_cone' in f_name):
@@ -2804,8 +2840,9 @@ def pre_simp(n=0,N=0):
             status = try_scorr_constr()
         if ((n_ands() > 0) or (n_latches()>0)):
             res = a_trim()
-            print hist
+##            print hist
         if n_latches() == 0:
+            chk_sat = 1
             break
         status = process_status(status)
         if status <= Unsat:
@@ -2816,6 +2853,7 @@ def pre_simp(n=0,N=0):
         print 'Simplify: ',
         ps()
         if n_latches() == 0:
+            chk_sat = 1
             break
         if trim_allowed and n == 0:
             t = min(15,.3*G_T)
@@ -2832,6 +2870,7 @@ def pre_simp(n=0,N=0):
                     simplify(n,N)
                     #temporary
                 if n_latches() == 0:
+                    chk_sat = 1
                     break
                 if n == 0:
                     print 'trying try_phases'
@@ -2840,16 +2879,19 @@ def pre_simp(n=0,N=0):
                         print 'phase worked'
                         aigs_pp('push','phase')
                 if n_latches() == 0:
+                    chk_sat = 1
                     break
             if ((n_ands() > 0) or (n_latches()>0)):
                 res = a_trim()
-                print hist
+##                print hist
         status = process_status(status)
         print 'Simplification time = %0.2f'%(time.time()-ttime)
         last_simp = [n_pis(),n_pos(),n_latches(),n_ands()]
+        if chk_sat:
+            status = check_sat()
         return [status, smp_trace,hist]
     last_simp = [n_pis(),n_pos(),n_latches(),n_ands()]
-    if n_ands() > 0:
+    if n_ands() == 0 or chk_sat:
         status = check_sat()
     else:
         status = Undecided
@@ -2950,7 +2992,7 @@ def try_phase():
         return False
 ##    init_simp = 0
     res = a_trim()
-    print hist
+##    print hist
     print 'Trying phase abstraction - Max phase = %d'%n
     abc('w %s_phase_temp.aig'%f_name)
     na = n_ands()
@@ -3258,7 +3300,7 @@ def scorr_constr():
     abc('scorr -c -F %d'%f)
     abc('fold')
     res = a_trim()
-    print hist
+##    print hist
     print 'Constrained simplification: ',
     ps()
     return Undecided_no_reduction
@@ -3295,7 +3337,7 @@ def try_scorr_c(f):
         return 0
     else:
         res = a_trim()
-        print hist
+##        print hist
         return 1
     
 
@@ -3316,7 +3358,7 @@ def prove(a=0,abs_tried = False):
         if a == 2 do quick simplification instead of full simplification, then abs first, spec second"""
     global x_factor,xfi,f_name, last_verify_time,K_backup, t_init, sec_options, spec_found_cex
     spec_first = False
-    max_bmc = -1
+    set_max_bmc(-1)
     abs_found_cex_after_spec = spec_found_cex_after_abs = False
     if not '_smp' in f_name: #if already simplified, then don't do again
         if a == 2 : #do quick simplification
@@ -3394,19 +3436,21 @@ def prove(a=0,abs_tried = False):
     else:
         return 'UNDECIDED'
 
-def prove_part_1():
+def prove_part_1(frames_2=True):
     global x_factor,xfi,f_name, last_verify_time,K_backup,aigs
-    print 'Initial: ',
-    ps()
+##    print 'Initial: ',
+##    ps()
     x_factor = xfi
     set_globals()
     if n_latches() > 0:
 ##        ps()
-        res = try_frames_2()
+        res = False
+        if frames_2:
+            res = try_frames_2()
         if res:
             print 'frames_2: ',
             ps()
-            aigs_pp('push','phase')
+            aigs_pp('push','phase') #frames_2 is equivalent to 2 phase trasnform.
         print '\n***Running pre_simp'
         add_trace('pre_simp')
         result = run_par_simplify()
@@ -3421,7 +3465,7 @@ def prove_part_1():
     if ((status <= Unsat) or (n_latches() == 0)):
         return RESULT[status]
     res =a_trim()
-    print hist
+##    print hist
     if not '_smp' in f_name:
         write_file('smp') #need to check that this was not written in pre_simp
     set_globals()
@@ -3445,14 +3489,15 @@ def try_frames_2():
     abc('scl')
     nl = n_latches()
     if n_ands()> 35000:
-        return
+        return False
     abc('w %s_temp.aig'%f_name)
     abc('&get;&frames -o -F 2;&scl;&put')
     if n_latches() < .75*nl:
-        print 'frames_2: Number of latches reduced to %d'%n_latches()
+        print 'Expanded to 2 frames per cycle: latches reduced to %d'%n_latches()
         add_trace('frames_2')
 ##        res = reparam()
-##        xxxxx handle this
+##        xxxxx handle this. I guess no need to do reparametrization here.
+##      should do something about #PIs and depth of cex's
 ##        if res:
 ##            aigs.push()
         return True
@@ -3753,7 +3798,7 @@ def remove(lst,v=0):
     zero(lst,v)
     l=remove_const_pos(v)
     assert len(lst) == (n_before - n_pos()),'Inadvertantly removed some const-0 POs.\nPO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
-    print 'PO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
+##    print 'PO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
 
 
 def zero(list,v=0):
@@ -3781,7 +3826,7 @@ def listr_0_pos():
     return ll
 
 def list_0_pos():
-    """ returns a list of const-0 pos and removes them
+    """ returns a list of const-0 pos and does not remove them
     """
     abc('w %s_savetemp.aig'%f_name)
     L = range(n_pos())
@@ -3811,15 +3856,15 @@ def listr_1_pos():
     return ll
 
 
-def mark_const_pos(ll=[]):
+def list_const_pos(ll=[]):
     """ creates an indicator of which PO are const-0 and which are const-1
         does not change number of POs
     """
     n=n_pos()
     L = range(n)
-    ll = [-1]*n
+    ind = [-1]*n
     for j in L:
-        ll[j] = is_const_po(j)
+        ind[j] = is_const_po(j)
     print sumsize(ind)
     return ind
 
@@ -3842,7 +3887,7 @@ def unmap_cex():
         always match
     """
     global aigs,hist
-    print hist
+##    print hist
 ##    while not aigs == []:
     if len(hist)==0:
         print 'length of history is 0'
@@ -3935,16 +3980,110 @@ Results are stored at
         <benchmark name>.log - the log file of the solver
 _______________________________________
 """
-
+def sp_iter(t=200,L=[],globs=[[],[],[],[],0,[]]):
+    """if n == 0 do smp and abs first, then spec
+    if n == 1 do smp and spec first then abs
+    if n == 2 just do quick simplification instead of full simplification, then abs first, spec second
+    c means check the cex trace
+    if_sp ==> use auper_prove. L is only used for reporting results
+    """
+    global f_name
+    global init_initial_f_name, methods, last_verify_time,f_name,last_gasp_time
+##    global map1g,map2g,lst0g,lst1g,NPg,final_mapg
+##    print '\n**** entering super_prove iteration ****'
+    last_gasp_time = t
+    tt = time.time()
+##    sol = [-1]*n_pos()
+    #L is only for making thing compatible with output2
+    LL=list(L) 
+    pos = [] #create a list of unsolved POs
+    for i in range(len(LL)):
+        if LL[i] == -1:
+            pos = pos + [i]
+    sol = [-1]*len(pos)
+    assert len(pos) == n_pos(),'len(pos) = %d, n_pos = %d'%(len(pos),n_pos())
+    print 'len(pos) = %d, len(L) = %d'%(len(pos),len(L))
+##    print L
+    POs = pos
+##    S = []
+    f_name_iter = f_name = '%s_sp_iter'%f_name
+    abc('w %s.aig'%f_name_iter)
+##    abc('backup')
+    times = []
+    told = time.time()
+    abc('bmc3 -T 5')
+    cxf = n_bmc_frames()+1
+    while True:
+        ps()
+        cexframe = cxf
+        print '\n*** estimated next bmc cex_frame = %d ***'%cexframe
+        result = par_bss(t,cexframe-1)
+        print 'sp_iter: ',result
+        jmp = result[1] == 'bmcjmps'
+##        print POs
+        if result[0] == 'SAT' or result[0] == 0:
+##            print cex_po(),POs
+            if jmp:
+                cxf = cex_frame()
+            else: #simple got it so not reliable depth
+                cxf = min(cxf+1,cex_frame())
+            cx = cex_po()
+            px = POs[cx]
+            assert px < len(LL),'px = %d, len(LL) = %d'%(px,len(LL))
+            assert LL[px] == -1,'px = %d, LL[px] = %d'%(px,LL[px])
+            LL[px] = 1
+            print 'output %d is SAT'%px
+            # disabled because it causes a length error here
+##            output2(list(LL),globs) #outputs a new result 
+            if not -1 in LL:
+                break
+            i = POs.index(px)
+            POs = POs[:i]+POs[i+1:] #eliminates ith element
+            abc('r %s.aig'%f_name_iter) #temp to reset status
+##            abc('restore')
+            assert n_pos() > 1,'n_pos() = %d'%n_pos()
+            abc('zeropo -N %d;removepo -N %d'%(cx,cx))
+            abc('scl')
+##            abc('backup')
+            abc('w %s.aig'%f_name_iter) #done so sp can back up to correct start
+            f_name = f_name_iter #done if sp changed f_name
+            tnew = time.time()
+            times = [tnew - told] + times
+            told = tnew
+            if len(times) >= 5: #check if for last 5 avg(delta_t) > t/2
+                if min(times[:5]) > 50 or avg(times[:3]) >= 100: #taking too long on remaining POs
+                    break
+        elif result[0] == 'UNSAT' or result[0] == 2:
+            print 'all remaining POs proved unsat'
+            for i in range(len(LL)):
+                if LL[i] == -1:
+                    LL[i] = 0
+            break
+        else: # we can't prove anything more in the time allowed
+            print 'result is neither SAT nor UNSAT'
+            break
+    f_name = f_name_iter #
+    print 'time used in sp_iter = %0.2f'%(time.time() - tt)
+    return LL
+                   
+def avg(L):
+    sum = 0
+    if L == []:
+        return 0
+    for i in range(len(L)):
+        sum = sum + L[i]
+    return sum/len(L)
 
 def sp(n=0,t=2001,check_trace=False):
     """Alias for super_prove, but also resolves cex to initial aig"""
     global initial_f_name
-    print 'Executing super_prove'
+    print '\n               *** Executing super_prove ***'
+    print '%s: '%f_name,
+    ps()
     result = super_prove(n,t)
     print '%s is done and is %s'%(initial_f_name,result[0])
-    print 'sp: ',
-    print result
+##    print 'sp: ',
+##    print result
     if result[0] == 'SAT' and check_trace:
         res = unmap_cex()
         result1 = result[1]+ res
@@ -3970,15 +4109,16 @@ def sumsize(L):
 
 def unmap(L,L2,map):
     """ used in multiporve"""
-    mx = max(list(map))
-    assert mx <= len(L2),'max of map = %d, length of L2 = %d'%(mx,len(L))
+    mx = max(map)
+##    assert len(map) == len(L2),'len(mp) = %d, len(L2) = %d'%(len(map),len(L2))
+    assert mx < len(L),'max of map = %d, length of L = %d'%(mx,len(L))
     for j in range(len(map)):
-        L[j] = L2[map[j]] #expand results of L2 into L
+        L[map[j]] = L2[j] #expand results of L2 into L
     return L
 
 def unmap2(L2,map):
     mx = max(list(map))
-    assert mx <= len(L2),'max of map = %d, length of L2 = %d'%(mx,len(L))
+    assert mx < len(L2),'max of map = %d, length of L2 = %d'%(mx,len(L2))
     L=[-1]*len(map)
     for j in range(len(map)):
         L[j] = L2[map[j]] #expand results of L2 into L
@@ -3991,9 +4131,9 @@ def create_map(L,N):
     m = -1
     error = False
     for j in range(len(L)):
-        lj = L[j]
+        lj = L[j] # jth equivalence class
         for k in range(len(lj)):
-            mapp[lj[k]] = j
+            mapp[lj[k]] = j #put j in those positions
 ##        print lj
         mm = min(lj)
 ##        print mm
@@ -4042,7 +4182,7 @@ def quick_mp(t):
     l2 = indices(s,1)
     remove(l2,1)
     abc('scl')
-    simple()
+    simple()#does simplification first
     ps()
     print'time = %0.2f'%(time.time() - t1)
 
@@ -4083,6 +4223,7 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
     """two phase prove process for multiple output functions"""
     global max_bmc, init_initial_f_name, initial_f_name,win_list, last_verify_time
     global f_name_save,nam_save,_L_last,file_out
+##    global map1g,map2g,lst0g,lst1g,NPg,final_mapg
     x_init = time.time()
     abc('&get;&scl;,reparam -aig=%s_rpm.aig; r %s_rpm.aig')
     print 'Initial after &scl and reparam = ',
@@ -4222,14 +4363,14 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
     L1 =L = [-1]*N
     if N > 1 and N < 10000 and n_ands() < 500000: #keeps iso in
 ##    if N > 1 and N < 10000 and False: #temporarily disable iso
-        print 'Mapping for first isomorphism: '
+        print 'First isomorphism: ',
         res = iso() #reduces number of POs
         if res == True:
             abc('&get;&scl;&put')
             write_file('iso1')
             leq = eq_classes()
 ##        print leq
-            map1 = create_map(leq,N) #creates map into original
+            map1 = create_map(leq,N) #creates map into original if there were isomorphisms
 ##        print map1
             if not count_less(L,0) == N:
                 print 'L = %s'%sumsize(L)
@@ -4244,19 +4385,19 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
     r = pre_simp() #pre_simp
     write_file('smp1')
     NP = n_pos()/N #if NP > 1 then NP unrollings were done in pre_simp.
-    if NP > 1:
-        L1 = duplicate_values(L1,NP) # L1 has only -1s here. Put in same valuess for iso POs
-    if n_pos() > N:
-        assert NP>=2, 'NP not 2, n_pos = %d, N = %d, NP = %d'%(n_pos(),N,NP)
-    print 'pre_simp done. NP = %d\n\n'%NP
+##    if NP > 1:
+##        L1 = duplicate_values(L1,NP) # L1 has only -1s here. Put in same valuess for iso POs
+##    if n_pos() > N:
+##        assert NP>=2, 'NP not 2, n_pos = %d, N = %d, NP = %d'%(n_pos(),N,NP)
+##    print 'pre_simp done. NP = %d\n\n'%NP
     #WARNING: if phase abstraction done, then number of POs changed.
     if r[0] == Unsat:
-        print 'example is UNSAT'
+##        print 'example is UNSAT'
         L1 = [0]*N #all outputs are UNSAT
-        print sumsize(L1)
-        print 'unmapping for iso'
-        L = unmap(list(L),L1,map1)
-        print "putting in easy cex's and easy unsat's"
+##        print sumsize(L1)
+##        print 'unmapping for iso'
+        L = unmap2(L1,map1)
+##        print "putting in easy cex's and easy unsat's"
         L = weave(list(L),[],lst1) #put back 1 in L
         L = weave(list(L),lst0,[]) #put back 0 in L
         print sumsize(L)
@@ -4272,8 +4413,9 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
         L2=[-1]
 ##        write_file('1')
 ##        L = output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP)
-        L = output2(list(L2),map1,map2,lst0,lst1,NP)
-        result = simple(2001,1)
+        g = [map1,map2,lst0,lst1,NP,[]]
+        L = output2(list(L2),g)
+        result = simple(2001,1) # 1 here means do not do simplification first
         Ss = rs = result[0]
         if rs == 'SAT':
             L2 = [1]
@@ -4282,7 +4424,7 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
     else:
 ##        if False and N < 10000: #temp disable iso
         if N < 10000 and n_ands() < 500000: 
-            print 'Mapping for second isomorphism: '
+            print 'Second isomorphism: ',
             res = iso() #second iso - changes number of POs
             if res == True:
                 abc('&get;&scl;&put')
@@ -4302,24 +4444,23 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
 ##        #first mprove for 10-20 sec.
         ps()
         print 'Before first mprove2, L2 = %s'%sumsize(L2)
-        DL = output2(list(L2),map1,map2,lst0,lst1,NP) #reporting intermediate results
+        g = [map1,map2,lst0,lst1,NP,[]]
+        DL = output2(list(L2),g) #reporting intermediate results
 ##        DDL = output3(range(len(L2)),map1,map2,lst0,lst1,NP)
 ##        print 'DDL = %s'%str(DDL)
         if n_fast == 1:
             abc('w %s_unsolved.aig'%init_initial_f_name)
             return DL
         NN=n_ands()
-        #create timeout time for first mprove2
-        ttt = 10
-        if NN >30000:
-            ttt = 15
-        if NN > 50000:
-            ttt = 20
+        ttt = 100
         abc('w %s_before_mprove2.aig'%f_name)
         print '%s_before_mprove2.aig written'%f_name
 ##        print 'L2 = %s'%str(L2)
-        print 'Entering first mprove2 for %d sec.'%ttt,
-        Ss,L2 = mprove2(list(L2),op,ttt,1) #populates L2 with results
+        print 'Entering first mprove2 for %d sec.'%ttt
+        g = [map1,map2,lst0,lst1,NP,[]]
+        Ss,L2 = mprove2(list(L2),op,ttt,1,g) #populates L2, sp_iter is done instead of mprove
+        print 'mprove2 is done'
+##        map1g,map2g,lst0g,lst1g,NPg,final_mapg = map1,map2,lst0,lst1,NP,[]
 ##        print Ss,L2
         if Ss == 'SAT':
             print 'At least one PO is SAT'
@@ -4327,91 +4468,170 @@ def multi_prove(op='simple',tt=2001,n_fast=0, final_map=[]):
             if count_less(L2,0)>0:
                 print 'ERROR'
 ##            L = output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP) # final report of results.
-            L = output2(list(L2),map1,map2,lst0,lst1,NP)
+            g = [map1,map2,lst0,lst1,NP,[]]
+            L = output2(list(L2),g)
             return L
         print 'After first mprove2: %s'%sumsize(L2)
     time_left = tt - (time.time()-x_init)
     N = count_less(L2,0)
     if N > 0 and n_fast == 0:
 ##        output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP) #reporting new intermediate results
-        L = output2(list(L2),map1,map2,lst0,lst1,NP)
+        g = [map1,map2,lst0,lst1,NP,[]]
+        L = output2(list(L2),g)
         t = max(100,time_left/N)
         t_all = 100
     S = sumsize(L2)
     T = '%.2f'%(time.time() - x_init)
     print '%s in time = %s'%(S,T)
-    abc('w %s_unsolved.aig'%init_initial_f_name)
+    abc('w %s_unsolved.aig'%init_initial_f_name) #L2 refers to this aig
     N = n_pos()
-    ttime = 100
+    ttime = last_gasp_time #RKB: temp
     J = slps+intrps+pdrs+bmcs+sims
     #do each output for ttime sec.
     Nn = count_less(L2,0)
 ##    assert N == len(L2),'n_pos() = %d, len(L2) = %d'%(N,len(L2))
+    # entering end game. Doing
+    #1. super_prove
+    #2. par_multi_sat for a long time,
+    #3. scorr_easy
+    #4. simple on each PO cone if unproved < 20, else sp_iter.
+    #5. simple for long time
     if Nn > 0:
         found_sat = 0
         print 'final_all = %d, Ss = %s'%(final_all,str(Ss))
         if final_all and not Ss == 'SAT':
             print 'Trying to prove all %d remaining POs at once with super_prove'%Nn
             remove_proved_pos(L2)
-            result = super_prove()
+            result = super_prove() #RKB put in sp_iter here?
             if result[0] == 'UNSAT': #all remaining POs are UNSAT
                 for i in range(len(L2)):
                     if L2[i] < 0:
                         L2[i] = 0
 ##                L = output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP) # final report of results. 
-                L = output2(list(L2),map1,map2,lst0,lst1,NP)
+                g = [map1,map2,lst0,lst1,NP,[]]
+##                print ' entering final reporting 1'
+                L = output2(list(L2),g)
                 return L
             if result == 'SAT':
                 found_sat = 1
-        if found_sat or not final_all or Ss == 'SAT':
-            print 'Trying each remaining PO for %d sec.'%ttime
+        
+        if found_sat or not final_all or Ss == 'SAT': #RKB do something here with pdraz
+            nn = len(L2)
+            map3 = [i for i in xrange(nn) if L2[i] == -1]
             found_sat = 0
 ##            ttime = 10
-            for i in range(N):
-                if L2[i] > -1:
-                    continue
-                print '\n**** cone %d ****'%i
-                abc('r %s_unsolved.aig'%init_initial_f_name)
-                abc('cone -s -O %d'%i)
-                abc('&get;&scl;&lcorr;&put')
-                result = verify(J,ttime)
-                r = result[0]
-                if r > 2:
-                    continue
-                elif r == 2:
-                    L2[i] = 0
-                else:
-                    L2[i] = 1
-                    found_sat = 1
-##                output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP)
-                L = output2(list(L2),map1,map2,lst0,lst1,NP)
-            if Ss == 'SAT' and found_sat: #previous solve_all was SAT and found at least 1 PO SAT
-                abc('r %s_unsolved.aig'%init_initial_f_name)
-                if not count_less(L2,0) == 0:
-                    remove_proved_pos(L2)
+            ttime = 100
+            #first try par_multi_sat hard
+            print 'Trying par_multi_sat for %.2f sec.'%(5*ttime)
+            SS,LL,ss3 = par_multi_sat(5*ttime) #this causes gap = ttime
+            if 1 in ss3 or 0 in ss3: #something solved 
+                if -1 in ss3: #not all solved
+                    rem = indices(ss3,0)+indices(ss3,1)
+                    rem.sort()
+                    if not len(rem) == n_pos():
+                        print 'Removed %d POs'%len(rem)
+                        remove(rem,1)
+                L2 = unmap(L2,ss3,map3) #inserts the new values in the proper place in L2
+                g = [map1,map2,lst0,lst1,NP,[]]
+                L = output2(L2,g)
+            #put scorr here for easy unsat's. create map3 again and use as above.
+                
+            print 'trying scorr_easy'
+            nn - len(L2)
+            map4 = [i for i in xrange(nn) if L[i] == -1]
+                    #scorr_easy works on reduced aig
+            ss4 = scorr_easy() #ss refers to current POs. Have to map up to POs before map3
+            if 1 in ss4 or 0 in ss4: #something solved
+                if -1 in ss4: #not all solved
+                    rem = indices(ss4,0)+indices(ss4,1)
+                    rem.sort()
+                    if not len(rem) == n_pos():
+                        print 'Removed %d POs'%len(rem)
+                        remove(rem,1)
+                L2 = unmap(L2,ss4,map4) #inserts the new values in the proper place in L2
+                g = [map1,map2,lst0,lst1,NP,[]]
+                L = output2(L2,g)
+                
+            print 'L2: ',sumsize(L2)
+            if -1 in L2:
+                N = len(L2)
+                print 'Trying each remaining PO for %d sec.'%ttime
+                print 'File %s_unsolved.aig contains aig'%init_initial_f_name
+                unproved = [i for i in xrange(N) if L2[i] == -1]
+                print 'unproved POs are: ',unproved
+                if len(unproved) < 20:
                     simplify()
-                    write_file('save')
-                    result = simple(2001,1)
-                    if_found = False
-                    if result[0] == 'UNSAT':
-                        for i in range(N):
-                            if L2[i] == -1:
-                                L2[i] = 0
-                    elif result[0] == 'SAT' and n_pos() == 1:
-                        for i in range(N):
-                            if L2[i] == -1:
-                                if if_found == True:
-                                    print 'Error: more that 1 UNDECIDED remained in L2'
-                                    break
-                                L2[i] = 1
-                                if_found = True
-                    else:
-                        if result[0] == 'SAT':
-                            print 'at least 1 unsolved PO is SAT'
+                    for i in range(N):
+                        if L2[i] > -1:
+                            continue
+                        print '\n**** cone %d/%d ****'%(i,N)
+                        abc('r %s_unsolved.aig'%init_initial_f_name)
+                        assert i < n_pos(), 'cone %d is >= n_pos = %d'%(i,n_pos())
+                        abc('cone -s -O %d'%i)
+                        abc('&get;&scl;&lcorr;&put')
+        ##                abc('scl') #RKB temp
+                        result = verify(J,ttime)
+                        r = result[0]
+                        if r > Unsat: #Wasn't proved
+                            continue
+                        elif r == Unsat:
+                            L2[i] = 0
+                        else:
+                            L2[i] = 1
+                            found_sat = True
+                        g = [map1,map2,lst0,lst1,NP,[]]
+                        L = output2(list(L2),g)
+                else:
+                    g = [map1,map2,lst0,lst1,NP,[]]
+                    simplify()
+                    L2 = sp_iter(20001,list(L2),g)
+                    L = output2(list(L2),g)
+                    
+                if Ss == 'SAT' and found_sat: #previous solve_all was SAT and found at least 1 PO SAT
+                    abc('r %s_unsolved.aig'%init_initial_f_name)
+                    if not count_less(L2,0) == 0:
+                        remove_proved_pos(L2)
+                        simplify()
+                        write_file('save')
+                        result = simple(2001,1)# 1 here means do not do simplification first
+                        if_found = False
+                        if result[0] == 'UNSAT':
+                            for i in range(N):
+                                if L2[i] == -1:
+                                    L2[i] = 0
+                        elif result[0] == 'SAT' and n_pos() == 1:
+                            for i in range(N):
+                                if L2[i] == -1:
+                                    if if_found == True:
+                                        print 'Error: more that 1 UNDECIDED remained in L2'
+                                        break
+                                    L2[i] = 1
+                                    if_found = True
+                        else:
+                            if result[0] == 'SAT':
+                                print 'at least 1 unsolved PO was SAT'
+                                
 ##    L = output(list(L),list(L1),L2,map1,map2,lst0,lst1,NP) # final report of results.
-    L = output2(list(L2),map1,map2,lst0,lst1,NP)
+    g = [map1,map2,lst0,lst1,NP,[]]
+##    print 'entering final reporting 3'
+    L = output2(list(L2),g)
     return L
 
+def scorr_easy():
+    L = [-1]*n_pos()
+    na = n_ands()
+    if na > 30000:
+        abc('&get;&scorr;&put')
+    else:
+        k=1+30000/na
+        abc('scorr -k = %d'%k)
+    solv = list_const_pos()
+    if max(solv) > -1: #something solved
+        L = put(solv,L)
+    return L
+            
+        
+        
 def create_unsolved(L):
     abc('r %s_initial_save.aig'%init_initial_f_name) 
     lst = []
@@ -4469,12 +4689,15 @@ def PO_results(L):
             print 'error, L contains a non -1,0,1'
     res = "[[SAT = %s], [UNSAT = %s], [UNDECIDED = %s]"%(str(S),str(U),str(UD))
     #restore initial unsolved POs
+    if len(S) == len(L) or len(U) == len(L) or len(UD) == len(L):
+        # in these cases stored files would be same as original
+        return res
     abc('r %s.aig'%ff_name)
     if not UD == []:
         restrict(UD,0)
         abc('w %s_UNSOLVED.aig'%ff_name)
         print 'Unsolved POs restored as %s_UNSOLVED.aig'%ff_name
-        print 'Unsolved POs = %s'%str(UD)
+##        print 'Unsolved POs = %s'%str(UD)
         print 'Suggest trying multi_prove again on %s_UNSOLVED.aig'%ff_name
     else:
         print 'All POs were solved'
@@ -4484,14 +4707,14 @@ def PO_results(L):
         restrict(U,1) #we use 1 here because do not want to remove const-0 POs which should be in U
         abc('w %s_UNSAT.aig'%ff_name)
         print 'Unsat POs restored as %s_UNSAT.aig'%ff_name
-        print 'Unsat POs = %s'%str(U)
+##        print 'Unsat POs = %s'%str(U)
     abc('r %s.aig'%ff_name)
     abc('fold')
     if not S == []:
         restrict(S,0)
         abc('w %s_SAT.aig'%ff_name)
         print 'Sat POs restored as %s_SAT.aig'%ff_name
-        print 'Sat POs = %s'%str(S)
+##        print 'Sat POs = %s'%str(S)
     return res
 
 def syn3():
@@ -4625,50 +4848,43 @@ def get_counts(L):
     return [s,u,d]
         
 
-def output(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[]):
-    global t_iter_start
-    print_all(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[])
-    #print 'L = %s, L1 = %s, L2 = %s'%(sumsize(L),sumsize(L1),sumsize(L2))
-    L1 = unmap(list(L1),L2,map2)
-    print 'L1 after map2 = %s'%sumsize(L1)
-    if NP > 1: #an unrolling was done
-        L1 = check_and_trim_L(NP,list(L1))#map into reduced size before unrolling was done by phase.
-        print 'L1 = %s'%sumsize(L1)
-    L = unmap(list(L),L1,map1)
-    print 'L after map1 = %s'%sumsize(L)
-    L = weave(list(L),[],lst1) #put back 1 in L
-    print 'L after lst1 = %s'%sumsize(L)
-    L = weave(list(L),lst0,[]) #put back 0 in L
-    print 'L after lst0= %s'%sumsize(L) 
-    report_results(list(L),final_map)
-    return L
-
-def output2(L2,map1,map2,lst0,lst1,NP,final_map=[]):
-    global t_iter_start
+##def output(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[]):
+##    global t_iter_start
 ##    print_all(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[])
-    #print 'L = %s, L1 = %s, L2 = %s'%(sumsize(L),sumsize(L1),sumsize(L2))
-    L1 = unmap2(L2,map2)
-    print 'L1 after map2 = %s'%sumsize(L1)
+##    #print 'L = %s, L1 = %s, L2 = %s'%(sumsize(L),sumsize(L1),sumsize(L2))
+##    L1 = unmap(list(L1),L2,map2)
+####    print 'L1 after map2 = %s'%sumsize(L1)
 ##    if NP > 1: #an unrolling was done
 ##        L1 = check_and_trim_L(NP,list(L1))#map into reduced size before unrolling was done by phase.
 ##        print 'L1 = %s'%sumsize(L1)
-    L = unmap2(L1,map1)
-    print 'L after map1 = %s'%sumsize(L)
-    L = weave(list(L),[],lst1) #put back 1 in L
-    print 'L after lst1 = %s'%sumsize(L)
-    L = weave(list(L),lst0,[]) #put back 0 in L
-    print 'L after lst0= %s'%sumsize(L) 
-    report_results(list(L),final_map)
-    return L
+##    L = unmap(list(L),L1,map1)
+####    print 'L after map1 = %s'%sumsize(L)
+##    L = weave(list(L),[],lst1) #put back 1 in L
+####    print 'L after lst1 = %s'%sumsize(L)
+##    L = weave(list(L),lst0,[]) #put back 0 in L
+####    print 'L after lst0= %s'%sumsize(L) 
+##    report_results(list(L),final_map)
+##    return L
 
-def output3(L2,map1,map2,lst0,lst1,NP,final_map=[]):
-    """ find out where results came from"""
+def output2(L2,globs=[[],[],[],[],0,[]]):
     global t_iter_start
+##    global map1g,map2g,lst0g,lst1g,NPg,final_mapg
+    [map1,map2,lst0,lst1,NP,final_map] = globs
     L1 = unmap2(L2,map2)
     L = unmap2(L1,map1)
     L = weave(list(L),[],lst1) #put back 1 in L
     L = weave(list(L),lst0,[]) #put back 0 in L
+    report_results(list(L),final_map)
     return L
+
+##def output3(L2,map1,map2,lst0,lst1,NP,final_map=[]):
+##    """ find out where results came from"""
+##    global t_iter_start
+##    L1 = unmap2(L2,map2)
+##    L = unmap2(L1,map1)
+##    L = weave(list(L),[],lst1) #put back 1 in L
+##    L = weave(list(L),lst0,[]) #put back 0 in L
+##    return L
 
 def print_all(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[]):
 ##    return
@@ -4816,21 +5032,33 @@ def report_results(L,final_map=[],if_final=False):
     out = '\n@@@@ %s: Time = %.2f: results = %s'%(init_initial_f_name,(time.time()- t_iter_start),sumsize(L))
     print out
     file_out.write(out + '\n')
+    out = 'current aig size: ' + ps()
+    file_out.write(out)
+    s = [i for i in xrange(len(L)) if ((L[i] == 1) and _L_last[i] == -1)]
+    ss = 'new SATs = ' + str(s)
+    file_out.write(ss)
+    u = [i for i in xrange(len(L)) if ((L[i] == 0) and _L_last[i] == -1)]
+    uu = 'new UNSATs = ' + str(u)
+    file_out.write(uu)
     file_out.flush()
     for j in range(len(L)):
         if not L[j] == _L_last [j]:
-            assert _L_last[j] == -1, '_L_last[j] = %d, L[j] = %d'%(_L_last[j],L[j])
-            report_result(j,L[j])
+##            assert _L_last[j] == -1, '_L_last[j] = %d, L[j] = %d'%(_L_last[j],L[j])
+            if _L_last[j] == -1: #not reported yet
+                report_result(j,L[j])
     _L_last = list(L) #update _L_last
 ##    print 'report: _L_last = %s'%sumsize(_L_last)
     print '\n'
 
 def report_result(POn, REn, final_map=[]):
     return #for non hwmcc application
+    trans = ['UNSAT','SAT']
+    assert not REn < 0, 'reporting  non proved PO'
     if final_map == []:
         print 'PO = %d, Result = %d:  '%(POn, REn),
     else:
         print 'PO = %d, Result = %d:  '%(final_map[POn], REn),
+    print '\n'
 
 
 def scorr_T(t=10000):
@@ -5001,8 +5229,8 @@ def list_0_pos():
             L = L + [j]
     return L
 
-def mprove2(L=0,op='simple',t=100,nn=0):
-    global _L_last, f_name, skip_spec
+def mprove2(L=0,op='simple',t=100,Fnn=0,globs=[[],[],[],[],0,[]]):
+    global _L_last, f_name, skip_spec, last_gasp_time
     print 'mprove2 entered' ,
     if L == 0:
         L = [-1]*n_pos()
@@ -5031,9 +5259,9 @@ def mprove2(L=0,op='simple',t=100,nn=0):
         v = -1
         skip_spec_old = skip_spec
         skip_spec = True
-        result = simple(2001,1)
+        result = simple(2001,1)# 1 here means do not do simplification first
         ff_name == f_name
-        result = super_prove(0,2001) #warning super_prove() can change f_name. 0 means simplify
+##        result = super_prove(0,2001) #warning super_prove() can change f_name. 0 means simplify
         f_name = ff_name
         skip_spec = skip_spec_old
         res = result[0]
@@ -5059,12 +5287,16 @@ def mprove2(L=0,op='simple',t=100,nn=0):
     NP = n_pos()/N
     L1 = [-1]*n_pos()
     Llst0 = []
+    print 'L1: ',len(L1)
     if r[0] == Unsat:
         L1 = [0]*N
+    elif n_latches() == 0:
+        if check_sat() == Unsat:
+            L1 = [0]*N
     else:
         Llst0 = list_0_pos()
         Llst0.sort()
-        print 'Llst0 = %s'%str(Llst0)
+##        print 'Llst0 = %s'%str(Llst0)
         n_0 = len(Llst0)
         if n_0 > 0:
 ##            print 'Found %d const-0 POs'%n_0
@@ -5099,8 +5331,7 @@ def mprove2(L=0,op='simple',t=100,nn=0):
                         gap = int(1+1.2*gap)
                         print 'gap = %.2f'%gap
                         pre_simp(1) #warning this may create const-0 pos
-                        S,lst2,s = par_multi_sat(tb,gap,1,1) #this can find UNSAT POs
-                        s210 = s
+                        S,lst2,s210 = par_multi_sat(tb,gap,1,1) #this can find UNSAT POs
                         n_solved = n_pos() - count_less(s210,0)
                         s10 = put(s210,list(s10)) #put the new values found into s10
                         if count_less(s10,0) == 0 or n_solved == 0: #all solved or nothing solved
@@ -5125,41 +5356,27 @@ def mprove2(L=0,op='simple',t=100,nn=0):
         else:
             print 'nothing solved'
         write_file('bmc2')
-        if -1 in s10:
-            print 'Entering solve_all ',
-            ps()
-            S,s210 = solve_all([-1]*n_pos(),2001) #solve_all calls super_prove() or simple but preserves the aig and f_name
-##            else: 
-            if -1 in s210: #then no POs were solved by solve_all
-##                abc('r %s_smp2_2.aig'%f_name)
-                if n_pos() < 50:
-                    print 'Entering mprove with %d sec. for each cone'%t,
-                    ps()
-                    print 'L2 before mprove: %s'%sumsize(L2)
-                    s210 = mprove([-1]*n_pos(),op,t) #proving each output separately
-                else:
-                    s210 = [-1]*n_pos()
-            print 's210 after mprove and before inject 1 %s:'%sumsize(s210)
-            L2 = put(s210,s10) 
-##            print 'L2 after inject 1 %s:'%sumsize(L2)
+        if -1 in s10: #still some unsolved
+##            par_mlti_sat(200,0,1000)
+            last_gasp_time_old = last_gasp_time
+            last_gasp_time = max(2*t,200)
+            print '\n**** entering super_prove/simple iteration ****'
+            old_f_name = f_name
+            Lt = L2t = list(s10)
+##            L1t = inject(L2t,Llst0,0)
+##            Lt = insert(L1t,list(L))
+            print 'length of Lt = %d, size = %s'%(len(Lt),str(sumsize(Lt)))
+            s210 = sp_iter(20001,Lt,globs) #s210 same length as Lt
+            print 'sp_iter is done'
+            f_name = old_f_name
+            last_gasp_time = last_gasp_time_old
+            L2 = s210
         else: #all POs solved
             L2 = s10
-        assert NP == 1, 'NP > 1: ERROR'
-        if NP>1: 
-            print 'NP = %d'%NP
-            print 'L1 before unmap3: %s'%sumsize(L1)  #L1 should be all -1's of length before iso 
-            L1 = unmap(list(L1),L2,map3)
-            print 'L1 after unmap of map3: ',
-            print sumsize(L1)
-        else:
-##            print 'L2 = %s'%str(L2)
-            L1 = L2
-        L1 = inject(list(L1),Llst0,0)
-        print 'L1 after inject of Llst0 0s: %s:'%sumsize(L1)
-    if NP >1:
-        L1 = check_and_trim_L(NP,L1)
+    assert NP == 1, 'NP > 1: ERROR'
+    L1 = inject(list(L2),Llst0,0)
+    print 'L1: ',len(L1),len(L2),len(Llst0)
     assert len(L1)<=len(L),"L1 = %d larger than L = %d"%(len(L1),len(L))
-##    print 'L = %s'%str(L)
     L = insert(L1,list(L)) # replace -1s in L with values in L1. Size of L1<=L L is really L2
     print sumsize(L)
     f_name = old_f_name
@@ -5198,8 +5415,7 @@ def merge(L1,L2,n=0):
     return L            #L is already sorted
 
 def put(s2,s11):
-    """ put in the values of s2 into where there are -1's in s1 into s1
-    return s2 """
+    """ put in the values of s2 into s11 where there should be only -1's and return s1 """
     s1 = list(s11)
     k = 0
     assert len(s2) == count_less(s1,0),'mismatch in put'
@@ -5207,6 +5423,7 @@ def put(s2,s11):
         if s1[j] == -1:
             s1[j] = s2[k]
             k=k+1
+    assert k == len(s2),'did not put in all values of s2 into s1'
     return s1
 
 def gaps(L1):
@@ -5255,26 +5472,13 @@ def gaps(L1):
 ##    return L            #L is already sorted
     
 
-def solve_all(L2,t):
-    global f_name, skip_spec
-    abc('w %s_solve_all.aig'%f_name)
-    old_f_name = f_name
-##    abc('orpos')
-##    print 'solve_all for %.2f sec.: '%t,
-##    ps()
-    skip_spec_old = skip_spec
-    skip_spec = True
-    tt = max(t,2001)
-    print 'Entering simple for %d sec.'%tt
-##    result = simple(tt,1) #### temporary 1 means do not simplify
-    result = super_prove(0,t) #warning super_prove() may change f_name. Changed from HWMCC13 submission
-    skip_spec = skip_spec_old
-##    print 'solve_all: result = %s'%result
-    if result[0] == 'UNSAT':
-        L2 = [0]*len(L2)
-    f_name = old_f_name
-    abc('r %s_solve_all.aig'%f_name)
-    return result[0],L2
+##def solve_all(L2,t):
+##    global f_name, skip_spec
+##    print '\n**** entering super_prove iteration ****'
+##    old_f_name = f_name
+##    L2 = sp_iter(0,t)
+##    f_name = old_f_name
+##    return ['?'] + L2
 
 def inject(L,lst,v):
     """
@@ -5447,7 +5651,7 @@ def super_prove(n=0,t=2001):
     if will try to prove each output separately, in reverse order. It will quit at the first output that fails
     to be proved, or any output that is proved SAT
     n controls call to prove(n)
-    is n == 0 do smp and abs first, then spec
+    if n == 0 do smp and abs first, then spec
     if n == 1 do smp and spec first then abs
     if n == 2 just do quick simplification instead of full simplification, then abs first, spec second
     """
@@ -5459,23 +5663,23 @@ def super_prove(n=0,t=2001):
     if x_factor > 1:
         print 'x_factor = %f'%x_factor
         input_x_factor()
-    max_bmc = -1
+    set_max_bmc(-1)
     x = time.time()
     add_trace('prove')
     result = prove(n)
-    print 'prove result = ',
-    print result
+##    print 'prove result = ',
+##    print result
     tt = time.time() - x
     if ((result == 'SAT') or (result == 'UNSAT')):
         print '%s: total clock time taken by super_prove = %0.2f sec.'%(result,tt)
         add_trace('%s'%result)
         add_trace('Total time = %.2f'%tt)
-        print m_trace
+##        print m_trace
         return [result]+[m_trace]
     elif ((result == 'UNDECIDED') and (n_latches() == 0)):
         add_trace('%s'%result)
         add_trace('Total time = %.2f'%tt)
-        print m_trace
+##        print m_trace
         return [result]+[m_trace]
     print '%s: total clock time taken by super_prove so far = %0.2f sec.'%(result,(time.time() - x))
     y = time.time()
@@ -5693,7 +5897,7 @@ def check_abs():
 
 def modify_methods(J,dec=0):
     """ adjusts the engines to reflect number of processors"""
-    N = bmc_depth()
+    N = get_bmc_depth()
     L = n_latches()
     I = n_real_inputs()
     npr = n_proc - dec
@@ -5719,24 +5923,24 @@ def modify_methods(J,dec=0):
         J = remove_intrps(J)
     return J
 
-def BMC_VER():
-    """ a special version of BMC_VER_result that just works on the current network
-    Just runs engines in parallel - no backing up
-    """
-    global init_initial_f_name, methods, last_verify_time, n_proc,last_gasp_time
-    xt = time.time()
-    result = 5
-    t = max(2*last_verify_time,last_gasp_time)  ####
-    print 'Verify time set to %d'%t
-    J = slps + pdrs + bmcs + intrps
-    J = modify_methods(J)
-    F = create_funcs(J,t)
-    mtds = sublist(methods,J)
-    print mtds
-    (m,result) = fork_break(F,mtds,'US')
-    result = RESULT[result]
-    print 'BMC_VER result = %s'%result
-    return result
+##def BMC_VER():
+##    """ a special version of BMC_VER_result that just works on the current network
+##    Just runs engines in parallel - no backing up
+##    """
+##    global init_initial_f_name, methods, last_verify_time, n_proc,last_gasp_time
+##    xt = time.time()
+##    result = 5
+##    t = max(2*last_verify_time,last_gasp_time)  ####
+##    print 'Verify time set to %d'%t
+##    J = slps + pdrs + bmcs + intrps
+##    J = modify_methods(J)
+##    F = create_funcs(J,t)
+##    mtds = sublist(methods,J)
+##    print mtds
+##    (m,result) = fork_break(F,mtds,'US')
+##    result = RESULT[result]
+##    print 'BMC_VER result = %s'%result
+##    return result
 
 def BMC_VER_result(t=0):
 ##    return 'UNDECIDED'   #TEMP
@@ -5747,8 +5951,11 @@ def BMC_VER_result(t=0):
     abc('scl')
     print '\n***Running proof on %s after scl:'%f_name,
     ps()
-    if t == 0:
-        t = max(2*last_verify_time,last_gasp_time) #each time a new time-out is set t at least 1000 sec.
+##    if t == 0:
+####        t = max(2*last_verify_time,last_gasp_time)
+##        t = last_gasp_time
+##        #each time a new time-out is set t at least 1000 sec.
+    t = last_gasp_time
     print 'Verify time set to %d'%t
     J = slps + allpdrs2 + bmcs + intrps + sims
     last_name = seq_name(f_name).pop()
@@ -5758,7 +5965,7 @@ def BMC_VER_result(t=0):
     J = modify_methods(J) #if # processors is enough and problem is small enough then add in reachs
     F = create_funcs(J,t)
     mtds = sublist(methods,J)
-    print '%s'%mtds
+##    print '%s'%mtds
     (m,result) = fork(F,mtds)
     result = get_status()
     if result == Unsat:
@@ -6356,27 +6563,30 @@ def par_multi_sat(t=10,gap=0,m=1,H=0):
     """ m = 1 means multiple of 1000 to increment offset"""
     global last_gap
     abc('w %s_save.aig'%f_name)
-    gt = gap = last_gap
-    if t < 1000:
-        if not t == 0:
-            if gap == 0:
-                gap = max(.2,.2*t)
-                gap = max(15,gap)
-            if gap > t:
-                t=gap
-            t,gt = set_t_gap(t,gap)
-            gt = max(15,gt)
-            if gt <= last_gap:
-                gt = 1.2*last_gap
-        else:
-            t = gt = 5
-        if gt > t:
-            t = gt
-        last_gap = gt
-    ##    H = max(100, t/n_pos()+1)
-        if not H == 0: #se timeout peer output
-            H = (gt*1000)/n_pos()
-            H = max(min(H,1000*gt),100)
+    if not gap == 0:
+        gt = gap = last_gap
+        if t < 1000:
+            if not t == 0:
+                if gap == 0:
+                    gap = max(.2,.2*t)
+                    gap = max(15,gap)
+                if gap > t:
+                    t=gap
+                t,gt = set_t_gap(t,gap)
+                gt = max(15,gt)
+                if gt <= last_gap:
+                    gt = 1.2*last_gap
+            else:
+                t = gt = 5
+            if gt > t:
+                t = gt
+            last_gap = gt
+        ##    H = max(100, t/n_pos()+1)
+            if not H == 0: #se timeout peer output
+                H = (gt*1000)/n_pos()
+                H = max(min(H,1000*gt),100)
+    else:
+        gt = gap = t
     tme = time.time()
     tt = 1.1*t
     list0 = listr_0_pos() #reduces POs
@@ -6424,42 +6634,32 @@ def par_multi_sat(t=10,gap=0,m=1,H=0):
 ##        F = F + [eval('(pyabc_split.defer(bmc3az)(t,gt,%d,0))'%(32*base))]
     ss=LL=L = [] 
     S = 'UNDECIDED'
-    zero_done = two_done = three_done = False
+    bmc0_done = pdr0_done = sim30_done = False
     s=ss = [-1]*n_pos()
     ii = []
     nn = len(F)
-    for i,res in pyabc_split.abc_split_all(F):
+    for i,res in pyabc_split.abc_split_all(F): #res[0] not used.
         ii = ii + [i]
-##        if len(ii) == len(F)-1: #all done but sleep
-##            break
         if i == 4: #sleep timeout
             print 'sleep timeout'
             break
-##        if i == 1:
-##            print 'PDR produced: %s'%str(res)
-####        print i
-        if i == 0:
-            zero_done = True # bmc with start at 0 is done
-        if i == 2: #sim3 with start 0 is done
-            two_done = True
-        if i == 3:
-            three_done = True
+        if i == 0:# bmc with start at 0 is done
+            bmc0_done = True 
+        if i == 1: #pdr with start 0 is done
+            pdr0_done = True
+        if i == 3:#sim3 with start 0 is done
+            sim30_done = True
         if res == None: #this can happen if one of the methods bombs out
             print 'Method %d returned None'%i
             continue
-##        print res
-        s1 = switch(list(res[1])) #res[1]= s
-        s = merge_s(list(s),s1) 
-##        print sumsize(s)
-        ss = ss + [s1]
+        n_old = count_less(s,0)
+        s = merge_s(list(s),res[1])
+        new_res = not n_old == count_less(s,0)
         if count_less(s,0) == 0:
             S = 'UNSAT'
             break
-        if len(ss)>1 and zero_done and two_done and three_done:
-            ss2 = ss[-2:] #checking if last 2 results agree
-            r = ss2[0]
-            if r == ss2[1] and count_less(r,1) < len(r): #at least 1 SAT PO found
-                break
+        if not new_res and bmc0_done and pdr0_done and sim30_done:
+            break
         if len(ii) == len(F)-1: #all done but sleep
             break
     print 'time = %.2f'%(time.time()-tme)
@@ -6491,6 +6691,7 @@ def check_consistancy(L,s):
         
 
 def check_s(s1,s2):
+    #same as [i for i in xrange(len(s1)) if (s1[i] == 0 and s2[i] == 1) or (s1[i] == 1 and s2[i] == 0)]
     assert len(s1) == len(s2),'lengths do not match'
     miss = []
     for i in range(len(s1)):
@@ -6500,6 +6701,9 @@ def check_s(s1,s2):
         
 
 def merge_s(s1,s2):
+    # same as [max(s1[i],s2[i]) for i in xrange(len(s1))]
+    if s2 == []:
+        return s1
     assert len(s1) == len(s2), 'error in lengths, s1 = %s, s2 = %s'%(str(s1),str(s2))
     s = [-1]*len(s1)
     for i in range(len(s1)):
@@ -6515,6 +6719,7 @@ def merge_s(s1,s2):
 
 def switch(ss):
     """ This changes the convention of SAT and UNSAT to SAT = 1, UNSAT = 0"""
+    #same as [not ss[i] for i in xrange(len(ss)) if ss[i] == 0 or ss[i] == 1]
     s1 = ss
     for i in range(len(ss)):
         si = ss[i]
@@ -6634,6 +6839,14 @@ def list_non_None(lst):
             L = L + [i]
     return L
 
+def get_frames(lst):
+    """lst is a list of cex's"""
+    L = []
+    for i in xrange(len(lst)):
+        if not lst[i] == None:
+            L.append(lst[i].get_frame())
+    return res
+
 def count_non_None(lst):
     #return len([i for i,s in enumerate(cex_list) if not s == None]
     count = 0
@@ -6654,9 +6867,34 @@ def remove_proved_pos(lst):
             abc('zeropo -N %d'%i)
     remove_const_pos(0)
 
+def bmc_par_jmps(t=2001,s=0,j=1,c=500,d=0):
+    """ s is starting frame, j is number of frames to jump,
+    c is conflict limit per PO, and d is total conflictbefore jump
+    when (not d == 0) is specified, it keeps jumping after d conclicts
+    """
+    mtds = funcs =[]
+    s0 = s
+    for i in range(5):
+        s = s0+i
+        mtds = mtds + ['bmc_j(%d,%d,%d,%d,%d)'%(t,s,j,c,d)]
+        funcs = funcs + [eval('(pyabc_split.defer(bmc_j)(t,s,j,c,d))')]
+    print mtds
+    mtd,res = fork(funcs,mtds)
+    print res
+    return [res[0],mtd]
 
-def bmc_j(t=2001):
-    cmd = 'bmc3 -C 5000 -J 2 -D 5000'
+def par_bss(t,s):
+    funcs = [eval('(pyabc_split.defer(bmc_par_jmps)(t,s))')]
+    funcs = funcs + [eval('(pyabc_split.defer(simple)(t,1))')]
+##    funcs = funcs + [eval('(pyabc_split.defer(sp)(2,t,False))')]
+    mtds = ['bmcjmps','simple','superprove']
+    mtds = mtds[:2]
+    i,res = fork(funcs,mtds) #all these should be returning 'SAT', 'UNSAT'...
+    print mtds[i],res
+    return res
+                          
+def bmc_j(t=2001,s=0,j=2,c=5000,d=5000):
+    cmd = 'bmc3 -C %d -J %d -D %d -S %d'%(c,j,d,s)
     abc(cmd)
     gs = prob_status()
     if not gs in [0,1,-1]:
@@ -6766,69 +7004,229 @@ def mprove_and(t=2001,gt=10,C=999,H=0):
     tt = .9*t
     if  not C == 0:
         abc('&get; &cycle -F %d; &put'%C) 
-    abc('&get; &mprove -T %.2f -G %.2f -H %.2f'%(tt,gt,H))
+    abc('&get; &mprove -T %.2f -G %.2f -H %.2sf'%(tt,gt,H))
     cex_list = cex_get_vector()
     L = list_non_None(cex_list)
     print '\nmprove_and(%.2f,%.2f,%.2f): CEXs = %d, time = %.2f'%(tt,gt,H,len(L),(time.time()-t_init))
 ##    print 'Length CEXs = %d'%(len(L))
     s = status_get_vector()
+##    print sumsize(s)
     if len(s) == 0: #error if this happens check with Alan
         s = [-1]*n_pos()
     sss = switch(list(s))
 ##    print 's_status = %s'%sumsize(sss)
-    return L,s
+    return L,sss
 
 def bmc3az(t=2001,gt=10,C=999,H=0):
     t_init = time.time()
     if  not C == 0:
         abc('&get; &cycle -F %d; &put'%C) 
-    abc('bmc3 -az -C 1000000 -T %.2f -G %.2f -H %.2f'%(t,gt,H))
-    cex_list = cex_get_vector()
-    L = list_non_None(cex_list)
-##    check_None_status(L)
-    print '\nbmc3az(%.2f,%.2f,%d,%d): CEXs = %d, time = %.2f'%(t,gt,C,H,len(L),(time.time()-t_init))
-##    print 'Length CEXs = %d'%(len(L))
-    s = status_get_vector()
-    if len(s) == 0: #error if this happens check with Alan
-        s = [-1]*n_pos()
-    sss = switch(list(s))
-##    print 's_status = %s'%sumsize(sss)
-##    s = [-1]*n_pos()
-##    for j in L:
-##        s[j]=0 #0 here means SAT. It will be switched in par_multi_sat
-##    sss = switch(list(s))
-##    print 's = %s'%sumsize(sss)
-    return L,s
+    abc('bmc3 -az -T %.2f -G %.2f -H %.2f'%(t,gt,H))
+##    cex_list = cex_get_vector()
+##    L = list_non_None(cex_list)
+    print 'bmc3az(%.2f,%.2f,%d,%d): time = %.2f'%(t,gt,C,H,(time.time()-t_init)),
+    s = switch(status_get_vector())
+    print sumsize(s)
+    return -1,s
+
+def set_initial(start):
+    if start == 0:
+        xa('init -z')
+    elif start == 1:
+        xa('init -o')
+    else:
+        assert len(start) == n_latches(),'new initial state not = n_latches'
+        xa('init -S start')
+
+def bmc3x(t=20,start=0,f=1):
+    """ start at state and run bmc3 for f frames
+    return the set of POs hit"""
+    set_initial(start)
+    abc('bmc3 -axv -T %.2f -F %d'%(t,f))
+    x =cex_get_vector()
+    D = [x[i].get_frame() for i in xrange(len(x)) if not x[i] == None]
+    POs = [i for i in xrange(len(x)) if not x[i] == None]
+##    print D
+    set_initial(0)
+    return POs,D
+
+def exper():
+    po_hits = []
+    itime = time.time()
+##    abc('w %s_hit.aig'%init_initial_f_name)
+    IDs = range(n_pos())
+    cycle = 0
+    while True:
+        #find distance to closest bad state
+        abc('bmc3 -T 40')
+        dmin = cex_frame()
+        if dmin == -1:
+            print 'no hits in 40 sec.'
+            break
+        cycle += dmin-1
+        abc('init -c;zero') #initialize to bad state and backup this aig
+##        abc('w %s_hit.aig'%init_initial_f_name) #save start at bad state
+        abc('backup')
+        d = build_dict(40,0,1) #find all pos hit at this bad state
+        assert not d == {},'dictionary is empty'
+##        print d.keys()
+        poh = d[str('0')] #all POs hit from this bad state in first cycle
+        print len(poh),
+        abc('restore')
+##        abc('r %s_hit.aig'%init_initial_f_name) #get bad start state
+        idpos = keep_sub(IDs,poh)
+        po_hits.append([cycle,len(poh),idpos])
+        IDs = remove_sub(IDs,poh)               
+##        print len(po_hits)
+        if len(poh) == n_pos(): #can't remove all POs.
+            break
+        remove(poh,1)
+    t,b,c,p = ((time.time()-itime),len(po_hits),po_hits[len(po_hits)-1][0],sum_col(po_hits,1))
+    print '\ntime = %.2f, bad states=%d, cycles=%d, POs hit=%d'%(t,b,c,p)
+    return po_hits
+
+def remove_sub(L,I):
+    """like L[~I]"""
+    return [L[i] for i in xrange(len(L)) if not i in I]
+
+def keep_sub(L,I):
+    """like L[I]"""
+    return [L[i] for i in xrange(len(L)) if i in I]
+
+def sum_col(d,j):
+    """ print the sum of column j"""
+    sum = 0
+    for i in range(len(d)):
+        sum += d[i][j]
+    return sum
+
+def print_d_stats(d):
+    res = []
+    for i in d.keys():
+        res.append([i,len(d[i])])
+    print res
+
+def build_dict(t=20,start=0,f=1):
+    POs,D = bmc3x(t,start,f)
+##    print POs
+##    print D
+    d = dict([])
+    N = len(D)
+    S=[]
+    for i in range(N):
+        di = D[i] #depth of ith cex
+        pos = [POs[i] for i in xrange(N) if D[i] == di and not di in S] #POs hit at depth di
+##        print pos
+        if not pos == []:
+            S += [di] #depths seen so far
+##            print S
+            dis = str(di)
+##            print dis
+            d.update({dis:pos}) #put in dictionary
+##        print d
+    return d
+
+def remove_pos_list(nliat):
+    l = [-1]*n_pos()
+    for i in range(len(l)):
+        l[i]=1
+    remove_pos(l)
+    
+                   
+    
+
+def bmc3as(t=0,start=0,C=0,H=0):
+    t_init = time.time()
+    abc('bmc3 -azx -T %.2f -S %d'%(t,start))
+    x = cex_get_vector()
+##    L = [i for i in xrange(n_pos()) if not x[i] == None]
+    D = [x[i].get_frame() for i in xrange(len(x)) if not x[i] == None]
+    print 'bmc3as(%.2f,%d): time = %.2f'%(t,start,(time.time()-t_init)),
+    s = switch(status_get_vector())
+    print sumsize(s),
+    D.append(get_max_bmc())
+    d = max(D)
+    print ' max depth = %d'%d
+    return d,s
 
 def pdraz(t=2001,gt=10,H=0):
-    print 'pdraz entered with t = %.2f, gt = %.2f, H = %.2f'%(t,gt,H)
+    """ H = runtimelimit per output. 0 => none
+    gt is gap time """
+##    print 'pdraz entered with t = %.2f, gt = %.2f, H = %.2f'%(t,gt,H)
     t_init = time.time()
     run_command('pdr -az -T %d -G %d -H %.2f'%(t,gt,H))
-    cex_list = cex_get_vector()
-    L = list_non_None(cex_list)
+##    cex_list = cex_get_vector()
+##    L = list_non_None(cex_list)
 ##    check_None_status(L)
-    s = status_get_vector()
-    if s == None:
-        print "status_get_vector returned None"
-    else:
-        print 'Number of UNSAT POs = %d'%(len(s) - count_less(s,1))
-    print 'pdraz(%.2f,%.2f,%d): CEXs = %d, time = %.2f'%(t,gt,H,len(L),(time.time()-t_init))
-    return L,s
+    s = switch(status_get_vector())
+##    print 'Number of UNSAT POs = %d'%(len(s) - count_less(s,1))
+    print 'pdraz(%.2f,%.2f,%d): time = %.2f'%(t,gt,H,(time.time()-t_init)),
+    print sumsize(s)
+    return -1,s
 
 def sim3az(t=2001,gt=10,C=1000,W=5,N=0):
     """ N = random seed, gt is gap time, W = # words, F = #frames"""
     t_init = time.time()
     if  not C == 0:
         abc('&get; &cycle -F %d; &put'%C) 
-    abc('sim3 -az -T %.2f -G %.2f -F 40 -W %d -N %d'%(t,gt,W,N))
-    cex_list = cex_get_vector()
-    L = list_non_None(cex_list)
+    abc('sim3 -az -T %.2f -G %.2f -F 40 -W %d -N %d'%(t,gt,W,N)) #this is only one simulation???
+    L = list_non_None(cex_get_vector())
 ##    check_None_status(L)
     s = [-1]*n_pos()
     for i in L:
-        s[i] = 0 #0 indicates SAT here
-    print 'sim3az(%.2f,%.2f,%d,%d,%d): CEXs=%d, time = %.2f'%(t,gt,C,W,N,len(L),(time.time()-t_init))
-    return L,s
+        s[i] = 1 #1 indicates SAT here
+    print 'sim3az(%.2f,%.2f,%d,%d,%d): time = %.2f'%(t,gt,C,W,N,(time.time()-t_init)),
+    print sumsize(s)
+    return -1,s
+
+
+def sim3az2(t=2001,gt=10):
+    """ N = random seed, gt is gap time, W = #words, F = #frames
+    a round R is simulation for F frames. After each round, rarity info is
+    collected and updated. A restart is  done after S rounds, when a new
+    random seed is gotten, we restart from the initial state, but rarity information
+    is preserved.
+    """
+    global seed
+    t_init = time.time()
+    s = [-1]*n_pos()
+    f,w,b,r,res = (20,50,16,700,0)
+    while True:
+        ss = list(s)
+        for k in range(9):
+            t_old = time.time()
+##            f = min(f*2, 3500)
+##            res = min(max(f/4,30),50)
+##            w = max(((w+1)/2)-1,2)
+            abc('sim3 -az -T %.2f -G %.2f -F %d -W %d -N %d -B %d -R %d -S %d'%(gt,gt/2,f,w,seed,b,r,res))
+            print 'done with sim3'
+            L = list_non_None(cex_get_vector())
+            print 'len(L) = %d'%len(L)
+            seed = seed + 23
+            s_old = list(s)
+            print sumsize(s)
+            for i in L:
+                s[i] = 1 #1 indicates SAT here
+            print sumsize(s)
+            no_new = (s == s_old)
+            t_new = time.time()
+            lap_time = (t_new - t_old)
+            print 'lap_time = %.2f, '%lap_time,
+            print sumsize(s)
+            print no_new, t, gt,(t_new-t_init),(t_new+lap_time-t_init)
+            print f,w,seed,b,r,res
+            if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
+                break
+            if (t_new+lap_time -t_init) > t: #not enough time left for another lap
+                break
+        no_new = (s == ss)
+        if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
+            break
+        if (t_new+lap_time - t_init) > t: #not enough time left
+            break 
+    print 'sim3az2(%.2f,%.2f): time = %.2f'%(t,gt,(time.time()-t_init)),
+    print sumsize(s)
+    return -1,s
     
 def bmc3(t=2001):
     abc('bmc3  -T %d'%t)
@@ -6874,6 +7272,7 @@ def pre_reduce():
     print 'Time = %0.2f'%(time.clock() - x)
 
 def sublist(L,I):
+    """ like L[I] """
     # return [s for i,s in enumerate(L) if i in I]
     z = []
     for i in range(len(I)):
@@ -6932,7 +7331,7 @@ def run_sp2_par(t):
                 print 'simple returned UNDECIDED in %0.2f sec.'%T
                 return 'UNDECIDED'
             if ress == 'SAT':
-                print 'simple found cex in %0.2f sec.'%T
+                print 'simple found cex in %0.2f sec. in output %d'%(T,cex_po())
                 add_pord('SAT by %s'%mtd)
                 return 'SAT'
             else:
@@ -6970,7 +7369,7 @@ def fork_all(funcs,mtds):
             if status == 1: #unsat
                 print '%s proved UNSAT in %f sec.'%(mtds[i],t)
             else:
-                print '%s found cex in %f sec. - '%(mtds[i],t),
+                print '%s found cex in %f sec. in output %d - '%(mtds[i],t,cex_po()),
                 if not mtds[i] == 'REACHM':
                     print 'cex depth at %d'%cex_frame()
                 else:
@@ -6980,7 +7379,7 @@ def fork_all(funcs,mtds):
             print '%s was undecided in %f sec. '%(mtds[i],t)
     return i,res
 
-def fork_break(funcs,mtds,BREAK):
+def fork_break(funcs,mtds,BREAK='US'):
     """
     Runs funcs in parallel and breaks according to BREAK <= '?US'
     If mtds = 'sleep' or [], we are proving outputs in parallel
@@ -7017,7 +7416,7 @@ def fork_break(funcs,mtds,BREAK):
                 if methods.index(M) in exbmcs+allreachs+allpdrs+[1]: #set the known best depth so far. [1] is interp
                     set_max_bmc(n_bmc_frames())
             last_cex = M
-            print '%s: -- cex in %0.2f sec. at depth %d => '%(M,t,cex_frame()),
+            print '%s: -- cex in %0.2f sec. at depth %d in output %d => '%(M,t,cex_frame(),cex_po()),
             cex_list = cex_list+[cex_get()] #accumulates multiple cex's and puts them on list.
             if len(cex_list)>1:
                 print 'len(cex_list): %d'%len(cex_list)
@@ -7053,7 +7452,7 @@ def fork_best(funcs,mts):
             if status == 1: #unsat
                 print '%s proved UNSAT in %f sec.'%(mts[i],t)
             else:
-                print '%s found cex in %f sec. - '%(mts[i],t),
+                print '%s found cex in %f sec. in output %d - '%(mts[i],t,cex_po()),
             break
         else:
             cost = rel_cost(best_size)
@@ -7105,7 +7504,7 @@ def fork_last(funcs,mtds):
     #print 'starting fork_last'
     for i,res in pyabc_split.abc_split_all(funcs):
 ##        print i,res
-        print 'Method %s = , BMC depth = %d '%(mtds[i],n_bmc_frames())
+        print 'Method %s: depth = %d '%(mtds[i],n_bmc_frames())
         status = prob_status()
         if mtds[i] == 'par_scorr' and n_ands() == 0:
             add_trace('UNSAT by %s'%res)
@@ -7119,14 +7518,14 @@ def fork_last(funcs,mtds):
                 print '%s proved UNSAT in %d sec.'%(mtds[i],t)
             else:
                 res = Sat
-                print '%s found cex in %0.2f sec. - '%(mtds[i],(t)),
+                print '%s found cex in %0.2f sec. in output %d - '%(mtds[i],(t),cex_po()),
             break
         elif i == n:
 ##            print res
             if mtds[i] == 'PRE_SIMP':
                 m_trace = m_trace + [res[1]]
                 hist = res[2] #pre_simp must return hist because hist in not passed otherwise.
-                print hist
+##                print hist
             t = int(time.time()-y)
             m = i
             if mtds[i] == 'initial_speculate':
@@ -8005,7 +8404,7 @@ def bip_abs(t=100):
     set_globals()
     time = max(1,.1*G_T)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(bmc_depth())
+    set_max_bmc(get_bmc_depth())
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -8017,7 +8416,7 @@ def bip_abs(t=100):
     print 'Running %s'%cmd
 ##    abc(cmd)
     run_command(cmd)
-    bmc_depth()
+##    get_bmc_depth()
     abc('&w %s_greg.aig'%f_name)
     return max_bmc
 
@@ -8076,9 +8475,9 @@ def abstracta(if_bip=True):
         t = 1000 #timeout on vta
         t = abs_time
     tt = time.time()
-    if n_pos() > 1 and if_bip == 0:
-        abc('orpos')
-        print 'POs ORed together, ',
+##    if n_pos() > 1 and if_bip == 0:
+##        abc('orpos')
+##        print 'POs ORed together, ',
     initial_size = sizeof()
     abc('w %s_before_abs.aig'%f_name)
     # 25 below means that it will quit if #FF+#ANDS > 75% of original
@@ -8105,8 +8504,8 @@ def abstracta(if_bip=True):
 ##    J = modify_methods(J,2)
     funcs = funcs + create_funcs(J,1000)
     mtds = mtds + ['monitor_and_prove'] + sublist(methods,J)
-    print 'methods = ',
-    print mtds
+##    print 'methods = ',
+##    print mtds
     vta_term_by_time=0
     for i,res in pyabc_split.abc_split_all(funcs):
 ##        print i,res
@@ -8170,7 +8569,8 @@ def abstracta(if_bip=True):
                 add_trace('UNSAT by initial %s'%mtds[i])
                 return Unsat
             if is_sat():
-                print 'Initial %s proved SAT'%mtds[i]
+                bad_po = cex_po()
+                print 'Initial %s proved SAT for output %d'%(mtds[i],cex_po())
                 add_trace('SAT by initial %s'%mtds[i])
                 return Sat
             else: # an engine failed here
@@ -8178,6 +8578,8 @@ def abstracta(if_bip=True):
                 add_trace('method %s failed'%mtds[i])
 ##                return Undecided
                 continue
+    read_abs_values()
+    set_max_bmc(abs_depth-1)
     if  vta_term_by_time == 0 and if_bip == 0 and gabs: #vta timed out itself
         print 'Trying to verify final abstraction',
         ps()
@@ -8202,7 +8604,7 @@ def abstracta(if_bip=True):
             add_trace('UNSAT')
             return Unsat
     ##    set_max_bmc(NBF)
-        NBF = bmc_depth()
+        NBF = get_bmc_depth()
         print 'Abstraction good to %d frames'%max_bmc
         #note when things are done in parallel, the &aig is not restored!!!
         if if_bip:
@@ -8247,7 +8649,7 @@ def abstracta(if_bip=True):
             result = simplify()
             assert result >= Unsat, 'simplify returned SAT'
             if result > Unsat: #test if abstraction is unsat
-                result = simple()
+                result = simple()# does simplification first
                 res = result[0]
                 if res == 'UNSAT':
                     return Unsat
@@ -8296,14 +8698,17 @@ def gla_abs_iter(t):
     cmd = '&gla -mvs -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d'%(f_name,it,r,q,abs_depth)
     print 'Executing %s'%cmd
     name = '%s_vabs.aig'%f_name
+    name_old = '%s_vabs_old.aig'%f_name
 ##    run_command(cmd)
     abc(cmd)
     if os.access(name,os.R_OK):
         run_command('&r -s %s_vabs.aig'%f_name) #get the last abstraction result
         run_command('&w %s_gla.aig'%f_name) #saves the result of abstraction.
-    else:
-        run_command('&r -s %s_abs_old.aig'%f_name) #get the last abstraction result
+    elif os.access(name_old,os.R_OK):
+        run_command('&r -s %s_vabs_old.aig'%f_name) #get the last abstraction result
         run_command('&w %s_gla.aig'%f_name) #saves the result of abstraction.
+    else:
+        return
     print 'wrote %s_gla file'%f_name
     run_command('&gla_derive;&put')
     run_command('w %s_gabs.aig'%f_name)
@@ -8331,7 +8736,7 @@ def read_abs_values():
         return #file does not exist so do nochange values
 ##    print '%s_ab.txt file exists and is readable'%f_name
     ab = open('%s_ab.txt'%f_name,'r')
-    print '%s_ab.txt is opened'%f_name
+##    print '%s_ab.txt is opened'%f_name
     s = ab.readline()
 ##    print s
     cex_abs_depth = int(s)
@@ -8343,10 +8748,10 @@ def read_abs_values():
     time_abs = float(s)
     s = ab.readline()
 ##    print s
-    abs_depth_prev = float(s)
+    abs_depth_prev = int(s)
     s = ab.readline()
 ##    print s
-    abs_depth = float(s)
+    abs_depth = int(s)
     ab.close()
 ##    print 'read: ',
 ##    print cex_abs_depth,time_abs_prev,time_abs,abs_depth_prev,abs_depth
@@ -8355,8 +8760,7 @@ def read_abs_values():
 def write_abs_values():
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
     """here we write in the abs values written by monitor and prove"""
-##    print 'write: ',
-##    print cex_abs_depth,time_abs_prev,time_abs,abs_depth_prev,abs_depth
+    print 'cex_depth=%d,abs_depth=%d,prev=%d,time_diff = %0.2f'%(cex_abs_depth,abs_depth,abs_depth_prev,(time_abs-time_abs_prev))
     ab = open('%s_ab.txt'%f_name,'w')
     ab.write(str(cex_abs_depth)+'\n')
     ab.write(str(time_abs_prev)+'\n')
@@ -8385,7 +8789,7 @@ def abs_done(time_remain):
     frames_per_sec = (abs_depth - abs_depth_prev)/div
     if frames_per_sec <= 0:
         return False #something wrong 
-    print 'frames_per_sec = %0.2f, frames_to_next_cex = %d, time remaining = %0.2f'%(frames_per_sec, frames_to_next_cex, time_remain)
+##    print 'frames_per_sec = %0.2f, frames_to_next_cex = %d, time remaining = %0.2f'%(frames_per_sec, frames_to_next_cex, time_remain)
     if frames_to_next_cex > 0.2*(frames_per_sec * time_remain): #later frames will take longer so factor of 5 here
         print 'not enough abs time to next cex'
         return True
@@ -8432,16 +8836,17 @@ def monitor_and_prove():
         J = modify_methods(J,1)
         funcs = funcs + create_funcs(J,t) 
         mtds = ['read_and_sleep'] + sublist(methods,J)
-        print 'methods = %s'%mtds
+##        print 'methods = %s'%mtds
         for i,res in pyabc_split.abc_split_all(funcs):
 ##            print 'Mon. & Pr.: ,
 ##            print i,res
             if i == 0: # read_and_sleep terminated
                 if res == False: #found new abstraction
                     read_abs_values()
+                    set_max_bmc(abs_depth-1)
                     time_abs_prev = time_abs
                     time_abs = time.time()
-                    print 'time between new abstractions = %0.2f'%(time_abs - time_abs_prev)
+##                    print 'time between new abstractions = %0.2f'%(time_abs - time_abs_prev)
                     write_abs_values()
                     abs_bad = 0 #new abs starts out good.
                     if not initial_size == sizeof() and n_latches() > abs_ratio * initial_size[2]:
@@ -8458,25 +8863,26 @@ def monitor_and_prove():
                 else:
                     assert False, 'something wrong. read and sleep did not return right thing'
             if i > 0: #got result from one of the verify engines
-                print 'monitor_and_prove: Method %s terminated'%mtds[i],
+##                print 'Monitor_and_Prove: Method %s ended'%mtds[i]
 ##                print i,res
                 if res == None:
                     print 'Method %s failed'%mtds[i]
                     continue
-##                print 'method %s found SAT in frame %d'%(mtds[i],cex_frame())
+                print 'side method %s found SAT in frame %d'%(mtds[i],cex_frame())
                 if is_unsat() or res == Unsat or res == 'UNSAT':
                     print '\nParallel %s proved UNSAT on current abstr\n'%mtds[i]
                     return [Unsat] + [mtds[i]]
                 elif is_sat() or res < Unsat or res == 'SAT': #abstraction is not good yet.
-                    print 'method = %s'%mtds[i]
+##                    print 'method = %s'%mtds[i]
                     if not mtds[i] == 'RareSim': #the other engines give a better estimate of true cex depth
                         read_abs_values()
+                        set_max_bmc(abs_depth-1)
                         cex_abs_depth = cex_frame()
                         write_abs_values()
-                    print '\nParallel %s found SAT on current abstr in frame %d\n'%(mtds[i],cex_frame())
+####                    print '\nParallel %s found SAT on current abstr in frame %d\n'%(mtds[i],cex_frame())
 ##                    print 'n_vabs = %d'%n_vabs
                     if initial_size == sizeof():# the first time we were working on an aig before abstraction
-                        print initial_size == abstraction_size
+                        print 'initial_size == abstraction_size'
                         return [Sat]+[mtds[i]]
 ##                    print 'current abstraction invalid'
                     abs_bad = 1 
@@ -8526,6 +8932,7 @@ def read_and_sleep(t=5):
     T = abs_time + 10
     set_size()
     name = '%s_vabs.aig'%f_name
+    name_old = '%s_vabs_old.aig'%f_name
 ##    if ifbip > 0:
 ##        name = '%s_vabs.aig'%f_name
 ##    print 'name = %s'%name
@@ -8548,32 +8955,34 @@ def read_and_sleep(t=5):
 ##            print '%s and %s_vabs.status have been read'%(name,f_name)
 ##            print 'reading %s_vabs.status'%f_name
             #name is the derived model (not the model with abstraction info
-            run_command('&r -s %s_vabs_old.aig'%f_name)
-            run_command('&w %s_gla.aig'%f_name)
-            run_command('&gla_derive;&put')
-            run_command('w %s_gabs.aig'%f_name)
-##            print '%s is removed'%name
-            read_abs_values()
-            time_abs_prev = time_abs
-            time_abs = time.time()
-##            print 'abs values has been read'
-            run_command('read_status %s_vabs.status'%f_name) 
-            abs_depth_prev = abs_depth
-            abs_depth = n_bmc_frames()
-            write_abs_values()
-##            print 'abs values has been written'
-            time_remain = T - (time.time() - tt)
-            if abs_done(time_remain):
-            	return True
-##            if not check_size():
-            if True:
-                print '\nNew abstraction: ',
-                ps()
-##                print 'Time = %0.2f'%(time.time() - tt)
-                set_size()
-                abc('w %s_abs.aig'%f_name)
-                return False
-            #if same size, keep going.
+            if os.access(name_old,os.R_OK):
+                run_command('&r -s %s_vabs_old.aig'%f_name)
+                run_command('&w %s_gla.aig'%f_name)
+                run_command('&gla_derive;&put')
+                run_command('w %s_gabs.aig'%f_name)
+    ##            print '%s is removed'%name
+                read_abs_values()
+                set_max_bmc(abs_depth-1)
+                time_abs_prev = time_abs
+                time_abs = time.time()
+    ##            print 'abs values has been read'
+                run_command('read_status %s_vabs.status'%f_name) 
+                abs_depth_prev = abs_depth
+                abs_depth = n_bmc_frames()
+                write_abs_values()
+    ##            print 'abs values has been written'
+                time_remain = T - (time.time() - tt)
+                if abs_done(time_remain):
+                    return True
+    ##            if not check_size():
+                if True:
+                    print '\nNew abstraction: ',
+                    ps()
+    ##                print 'Time = %0.2f'%(time.time() - tt)
+                    set_size()
+                    abc('w %s_abs.aig'%f_name)
+                    return False
+                #if same size, keep going.
         print '.',
         sleep(5)
 
@@ -8843,6 +9252,11 @@ def cubes(s):
 
 def ttcube(cube):
     """converts a cube into a truth table"""
+##    print 'entering ttcube',
+##    print cube
+##    print m.const(0)
+    if cube == []:
+        return m.const(0)
     t_t=m.const(1)
     for j in range(len(cube)):
         if cube[j]== '-':
@@ -8852,6 +9266,27 @@ def ttcube(cube):
             tj=~tj
         t_t = t_t & tj
     return t_t
+
+def set_str(st):
+    res = ''
+    N = m.N
+    for j in range(N):
+        if j+1 in st:
+            res=res + '1'
+        elif -(j+1) in st:
+            res = res+'0'
+        else:
+            res = res + '-'
+    return res
+
+def sets_sop(sts):
+    res = []
+    for j in range(len(sts)):
+        res = res + [set_str(sts[j])]
+    return res
+        
+        
+        
 
 
 def tt(sp): #sop_tt
@@ -8953,51 +9388,60 @@ def ISOP(tton,ttoff):
     res = m.isop(tton,~ttoff,0)
 ##    print res[0]
     ttr=res[1]
-    return sop(ttr)
+    result = sop(ttr)
+    check_ired(result,tton)
+    return result
 
-def sparse_syn_ver(name='test',ife=True):
-    global m,fname,n_pi,cost_mux,cost_dav,if_espresso
-    #set equivalent #ands for mux and davio constructions
-    cost_mux = 2 #temp
-    cost_dav = 4
-    if_espresso = ife
-    ############# synthesize
-    ti=time.time()
-    N_all_syn = []
-    tree_all = []
-    cost_all = []
-    res = sparsify(name)
-    final_cost = 0
-    for i in range(len(res)):
-        on = res[i][0] 
-        off = res[i][1]
-        fname = name + '_' + str(i)
-        print ' '
-        print '**** fname = %s ****'%fname
-        tr,cost_init,cost = mux_init(on,off) # mux can choose to implement the complement
-        tree_all = tree_all + [tr]
-        cost_all = cost_all + [cost]
-##        ppt(tr)
-        final_cost = final_cost + cost
-##        print '%s: time = %0.2f, initial cost = %d, final cost = %d'%(fname,(time.time()-ti),cost_init,cost)
-        ######### aet up verification
-        N_syn = tree2net(n_pi,tr)
-        write_net_to_aigfile(N_syn,'%s-syn.aig'%fname)
-        N_on = tree2net(n_pi,['+',on])
-        write_net_to_aigfile(N_on,'%s_on.aig'%fname)
-        N_off = tree2net(n_pi,['+',off])
-        write_net_to_aigfile(N_off,'%s_off.aig'%fname)
-        N_onoff = combine_two_nets(N_on,N_off)
-        write_net_to_aigfile(N_onoff,'%s_onoff.aig'%fname)
-    ##    on_po = res[0]
-    ##    off_po = res[1]
-        onoff_POs = list(N_onoff.get_POs())
-        ############ verify
-        check_syn_on_off(N_syn,N_onoff)
-        N_all_syn = combine_two_nets(N_all_syn,N_syn)
-    print '%s: time = %0.2f, final cost = %d'%(fname,(time.time()-ti),final_cost)
-    write_net_to_aigfile(N_all_syn,'%s-syn.aig'%name)
-    return N_all_syn,tree_all,cost_all
+def check_ired(isop,tton):
+    return
+##    size = len(isop)
+##    isopv = sop_tv(isop)
+##    isopv_irr = iredv(isopv,tton)
+##    assert size == len(isopv_irr),('sop is not irredundant',isop)
+
+##def sparse_syn_ver(name='test',ife=True):
+##    global m,fname,n_pi,cost_mux,cost_dav,if_espresso
+##    #set equivalent #ands for mux and davio constructions
+##    cost_mux = 2 #temp
+##    cost_dav = 4
+##    if_espresso = ife
+##    ############# synthesize
+##    ti=time.time()
+##    N_all_syn = []
+##    tree_all = []
+##    cost_all = []
+##    res = sparsify(name)
+##    final_cost = 0
+##    for i in range(len(res)):
+##        on = res[i][0] 
+##        off = res[i][1]
+##        fname = name + '_' + str(i)
+##        print ' '
+##        print '**** fname = %s ****'%fname
+##        tr,cost_init,cost = mux_init(on,off) # mux can choose to implement the complement
+##        tree_all = tree_all + [tr]
+##        cost_all = cost_all + [cost]
+####        ppt(tr)
+##        final_cost = final_cost + cost
+####        print '%s: time = %0.2f, initial cost = %d, final cost = %d'%(fname,(time.time()-ti),cost_init,cost)
+##        ######### aet up verification
+##        N_syn = tree2net(n_pi,tr)
+##        write_net_to_aigfile(N_syn,'%s-syn.aig'%fname)
+##        N_on = tree2net(n_pi,['+',on])
+##        write_net_to_aigfile(N_on,'%s_on.aig'%fname)
+##        N_off = tree2net(n_pi,['+',off])
+##        write_net_to_aigfile(N_off,'%s_off.aig'%fname)
+##        N_onoff = combine_two_nets(N_on,N_off)
+##        write_net_to_aigfile(N_onoff,'%s_onoff.aig'%fname)
+##    ##    on_po = res[0]
+##    ##    off_po = res[1]
+##        onoff_POs = list(N_onoff.get_POs())
+##        ############ verify
+##        check_syn_on_off(N_syn,N_onoff)
+##        N_all_syn = combine_two_nets(N_all_syn,N_syn)
+##    print '%s: time = %0.2f, final cost = %d'%(fname,(time.time()-ti),final_cost)
+##    write_net_to_aigfile(N_all_syn,'%s-syn.aig'%name)
+##    return N_all_syn,tree_all,cost_all
 
 def p_red(c):
     t=0
@@ -9013,35 +9457,42 @@ def syn5():
     abc('&get;&synch2;&syn2;&put')
     ps()
 
-def esp(name='temp'):
+def get_on_off(name='temp'):
     global m,fname,n_pi,if_espresso
     if_espresso=1
     m,res = pyaig.aig_to_tt_fname('%s.aig'%name)
     res0=res[0][0]
     res1=res[0][1]
-    print 'on: ',len(sop(res0)),lit(sop(res0))
-    print 'off: ',len(sop(res1)),lit(sop(res1))
-    te = time.time()
-##    r1 = espresso(sop(res0),sop(res1))
-##    print 'espresso time = ',(time.time() - te), len(r1), lit(r1)
-    ttv = time.time()
-    print ''
-    r2 = tvespresso(tt_tv(res0),tt_tv(res1))
-    print 'tvespresso time = ',(time.time() - ttv), len(r2),
-    r2 = tv_sop(r2)
-    print lit(r2)
-    print ''
-    res0,res1 = res1,res0
-    te = time.time()
-##    r3 = espresso(sop(res0),sop(res1))
-##    print 'espresso time = ',(time.time() - te), len(r3), lit(r3)
-    print ''
-    ttv = time.time()
-    r4 = tvespresso(tt_tv(res0),tt_tv(res1))
-    print 'tvespresso time = ',(time.time() - ttv), len(r4),
-    r4 = tv_sop(r4)
-    print lit(r4)
-    return res1,res0,r2,r4
+    return res1,res0
+
+##def esp(name='temp'):
+##    global m,fname,n_pi,if_espresso
+##    if_espresso=1
+##    m,res = pyaig.aig_to_tt_fname('%s.aig'%name)
+##    res0=res[0][0]
+##    res1=res[0][1]
+##    print 'on: ',len(sop(res0)),lit(sop(res0))
+##    print 'off: ',len(sop(res1)),lit(sop(res1))
+##    te = time.time()
+####    r1 = espresso(sop(res0),sop(res1))
+####    print 'espresso time = ',(time.time() - te), len(r1), lit(r1)
+##    ttv = time.time()
+####    print ''
+##    r2 = tvespresso(res0,res1,0)
+##    print 'tvespresso time = ',(time.time() - ttv), len(r2),
+####    r2 = tv_sop(r2)
+####    print lit(r2)
+##    res0,res1 = res1,res0
+##    te = time.time()
+####    r3 = espresso(sop(res0),sop(res1))
+####    print 'espresso time = ',(time.time() - te), len(r3), lit(r3)
+####    print ''
+##    ttv = time.time()
+##    r4 = espresso(res0,res1,0)
+##    print 'tvespresso time = ',(time.time() - ttv), len(r4),
+####    r4 = tv_sop(r4)
+##    print lit(r4)
+##    return res1,res0
 
                   
 def sparsify(name='test'):
@@ -9106,6 +9557,7 @@ def syn5_iter():
         
 
 def comb(fn):
+    """ extracts the combinational part of a sequential aig and writes it out"""
     abc('r %s.aig;comb;w %s-comb.aig'%(fn,fn))
 
 
@@ -9126,6 +9578,7 @@ def check_syn_on_off(N_synthesized, N_onoff):
         OK=False
     if OK:
         print "synthesis verified"
+    return OK
 
 def pre_check(N_synthesized, N_onoff):
     """Creates net with PO's = (f,on,off)"""
@@ -9183,10 +9636,10 @@ def d2b(d,N):
 
 ################ new espresso based entirely on truth tables ##############
 
-def sparse_syn_verv(name='test',ife=True):
+def sparse_syn_verv(name='test',ife=True,density=10):
     global m,fname,n_pi,cost_mux,cost_dav,if_espresso
     #set equivalent #ands for mux and davio constructions
-    cost_mux = 3
+    cost_mux = 2
     cost_dav = 4
     if_espresso = ife
     ############# synthesize
@@ -9194,18 +9647,21 @@ def sparse_syn_verv(name='test',ife=True):
     N_all_syn = []
     tree_all = []
     cost_all = []
-    res = sparsifyv(name) #res is a set if ISFs where each is [tvon,tvoff]
+    all_OK = True
+    res = sparsifyv(name,density) #res is a set if ISFs where each is [tton,ttoff]
     final_cost = 0
 ##    print len(res[0])
     for i in range(len(res)):
-        tvon = res[i][0]
-        tvoff=res[i][1]
+##        assert type(res[i]) == list, (i,res[i])
+##        assert len(res[i])>1,(i,res[i])
+        tton = res[i][0]
+        ttoff=res[i][1]
 ##        ton = or_red(res[i][0])
 ##        toff = or_red(res[i][1])
         fname = name + '_' + str(i)
         print ' '
         print '**** fname = %s ****'%fname
-        tr,cost_init,cost = mux_initv(tvon,tvoff) # mux can choose to implement the complement
+        tr,cost_init,cost = mux_initv(tton,ttoff) # mux can choose to implement the complement
         tree_all = tree_all + [tr]
         cost_all = cost_all + [cost]
 ##        ppt(tr)
@@ -9214,8 +9670,8 @@ def sparse_syn_verv(name='test',ife=True):
         ######### aet up verification
         N_syn = tree2net(n_pi,tr)
         write_net_to_aigfile(N_syn,'%s-syn.aig'%fname)
-        on = tv_sop(tvon)
-        off = tv_sop(tvoff)
+        on = sop(tton)
+        off = sop(ttoff)
         N_on = tree2net(n_pi,['+',on])
         write_net_to_aigfile(N_on,'%s_on.aig'%fname)
         N_off = tree2net(n_pi,['+',off])
@@ -9226,23 +9682,31 @@ def sparse_syn_verv(name='test',ife=True):
     ##    off_po = res[1]
         onoff_POs = list(N_onoff.get_POs())
         ############ verify
-        check_syn_on_off(N_syn,N_onoff)
+        all_OK = all_OK and check_syn_on_off(N_syn,N_onoff)
         N_all_syn = combine_two_nets(N_all_syn,N_syn)
     print '%s: time = %0.2f, final cost = %d'%(fname,(time.time()-ti),final_cost)
+    if all_OK:
+        print 'all synthesized POs verified correct'
+    else:
+        print '**** one of the POs failed verification ****'
     write_net_to_aigfile(N_all_syn,'%s-syn.aig'%name)
     return N_all_syn,tree_all,cost_all
 
-def mux_initv(tvon,tvoff):
-    """ initial call to create a cofactoring ttree with minimum cost"""
+def mux_initv(tton,ttoff):
+    """ initial call to create a cofactoring tree with minimum cost"""
     ttime = time.time()
-    tvpp = tvespresso(tvon,tvoff)
-    pp=tv_sop(tvpp)
+##    print 'entering tvespresso'
+    pp = tvespresso(tton,ttoff,0,ifesp=if_espresso) # 0 here means return sop, 1 return isop
+##    print 'done, entering tv_sop'
+##    pp=tv_sop(tvpp)
+##    print 'done'
+##    print 'sop size = ',len(pp)
     cost = count_fact_sop(pp)
     cost_init = cost
     #begin the recursion
     if cost > 0:
-        tree_r,cost = cof_recurv(tvon,tvoff,pp,cost)
-        print ''
+        tree_r,cost = cof_recurv(tton,ttoff,pp,cost)
+##        print ''
 ##        ppt(tree_r)
     else:
         tree_r = ['+',pp]
@@ -9257,7 +9721,7 @@ def tv_sop(tv):
         s = s + [tv_cube(tv[i])] 
     return s
 
-def sparsifyv(name='test'):
+def sparsifyv(name='test',density=10):
     """ ABC reads in test.aig and extracts output O. Then samples its onset and
     offset by taking a 10% sample of minterms and creates an file 'test_sp_O.aig'
     Returns sop of onset and sop of offset
@@ -9266,21 +9730,14 @@ def sparsifyv(name='test'):
     run_command('r %s.aig'%name)
     npi = n_pis()
     assert npi<17,'number of PIs exceeds 16'
-    p=10
-    if npi > 12:
-        tabl=[9,9,8,8]
-        p = tabl[(npi-12)-1]
-##    ps()
-##    run_command('cone -O %d'%O)
-##    ps()
-##    print 'collapsing'
+    p = density
+    if p == 10:
+        if npi > 12:
+            tabl=[9,9,8,8]
+            p = tabl[(npi-12)-1]
     run_command('st;ps;clp;sparsify -N %d;st;ps'%p) #creates ISFs for each PO.
-##    ps()
-##    fname = '%s_%d'%(name,O)
-##    fname = name
-##    print 'writing'
+##    print 'writing ISF file'
     run_command('w %s_ISF.aig'%name)
-##    print 'reading'
     res = read_ISF_aig(name) #assumes on's,off's are interleaved POs.
     #Here m is created
     #res is a list of tt ISFs for each PO of the aig read in
@@ -9288,65 +9745,88 @@ def sparsifyv(name='test'):
 ##    print len(res)
 ##    print len(res[0])
 ##    print 'converting to tv'
-    result = ttISF_tvISF(res)
+##    result = res #can take a long time
 ##    print 'done'
-    return result
+    return res
 
-def cof_recurv(tvon,tvoff,sop_in,cost):
+def cof_recurv(tton,ttoff,sop_in,cost):
     """ cofactoring wrt a single variable has to beat incoming cost
     a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
     the input is the ISF (ton,toff) to be implemented.
     Incoming cost is an upper bound for implementation.
     This returns (sop_in, cost) if there is no expansion that can beat cost.
     Otherwise, it returns expansion tree for the ISF.
-    (tvon,tvoff) is the current ISF and sop_in is its SOP
+    (tton,ttoff) is the current ISF and sop_in is its SOP
     """
-    if lit(tv_sop(tvon))<=1:#we are at a leaf because tvon is a single variable. don't do anything
-        return ['+',sop_in],cost
-    N=tvon[0].m.N
+##    if lit(sop(tton))<=1:#we are at a leaf because tton is a single variable. don't do anything
+##        return ['+',sop_in],cost
+    assert not type(tton) == int, (tton,ttoff,sop_in,cost)
+    N=tton.m.N
 ##    ton = or_red(tvon)
 ##    toff = or_red(tvoff)
-    tvon_init = tvon
-    sop_r,cost,sign =choose_signv(tvon,tvoff,sop_in,cost)
-##    assert ton==ton_init,'ton was switched internally'
+    tton_init = tton
+    cost_in = cost
+    sop_r,cost,sign =choose_signv(tton,ttoff,sop_in,cost)
+    assert cost <= cost_in,'cost_in = %d, cost = %d'%(cost_in,cost)
+    cost_in = cost
+    print '\ninitial factored cost = %d'%cost_in
+##    print ''
+##    print 'sign = %s, cost = %d'%(sign,cost)
     if sign == '-':
-        tvon,tvoff = tvoff,tvon
-    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2v(tvon,tvoff)
-    # sign us '+' or '-'.  If '-' then ton and toff need to be switched
+        tton,ttoff = ttoff,tton
+    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2v(tton,ttoff) #most binate
+    # sign is '+' or '-'.  If '-' then ton and toff need to be switched
     #method at this point is 'shannon'
+##    print 'most binate variable = ',imin
     cost_add = cost_mux
     newcost1 = cost0+cost1+cost_add
-##    print cost,newcost1,cost1,cost0
-    if newcost1 >= cost: # try a different split choice
-        imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old = imin,list(leaf1),list(leaf0),cost1,cost0,method
-        imin,leaf1,leaf0,cost1,cost0,method = get_split_varv(tvon,tvoff)
-        newcost2 = cost0+cost1+cost_add
-        if newcost2 >= cost: #try davio
-            return [sign,sop_r],cost
+    if imin == -1:
+        newcost1 = 10000
+    imin2,leaf12,leaf02,cost12,cost02,method2 = get_split_varv(tton,ttoff)
+    newcost2 = cost02+cost12+cost_add
+    cxor,i_xor,pxor,sxor,ntton,nttoff,xsign = get_xor_var(tton,ttoff)
+    if cxor < min(cost,newcost1,newcost2) and i_xor > -1:
+        print '*** XOR wins ***'
+        tree1,cost1 = cof_recurv(ntton,nttoff,sxor,cxor)
+        assert cost1 <= cxor,'espresso did not beat ISOP'
+        if pxor == 0:
+            i_xor = -(1+i_xor) #done to distinguish +0 from -0
+        print 'final cost = %d'%cost1
+        return [[i_xor,'xor',xsign,sign],tree1],cost1
+    if min(newcost1,newcost2) >= cost:
+        print 'final cost = %d'%cost_in
+        return [sign,sop_r],cost_in # tree is just initial sop + or -
+    elif newcost2< newcost1:
+        print '*** mux2 wins, newcost2 = %d ***'%newcost2
+        cost = newcost2
+        imin,leaf1,leaf0,cost1,cost0,method = imin2,leaf12,leaf02,cost12,cost02,method2
+    else:
+        print '*** mux1 wins, newcost1 = %d ***'%newcost1
+        cost = newcost1
     #recur here since a variable exists, namely imin, whose two cofactors can be
     #implemented as sop's plus a mux with less cost than the incoming 'cost'
-    if cost1 > 0: #a single literal cube has 0 cost
-        tvon1=tvcofactor(tvon,imin,1)
-        tvoff1=tvcofactor(tvoff,imin,1)
-        tree1,cost1 = cof_recurv(tvon1,tvoff1,leaf1,cost1)
-    else:
+    if cost1 > 0: 
+        tton1=cofactor(tton,imin,1)
+        ttoff1=cofactor(ttoff,imin,1)
+        tree1,cost1 = cof_recurv(tton1,ttoff1,leaf1,cost1)
+    else: #a single literal cube has 0 cost
         tree1=['+',leaf1]
     if cost0 > 0:
-        tvon0=tvcofactor(tvon,imin,0)
-        tvoff0=tvcofactor(tvoff,imin,0)
-        tree0,cost0 = cof_recurv(tvon0,tvoff0,leaf0,cost0)
-    else:
+        tton0=cofactor(tton,imin,0)
+        ttoff0=cofactor(ttoff,imin,0)
+        tree0,cost0 = cof_recurv(tton0,ttoff0,leaf0,cost0)
+    else: #a single literal cube has 0 cost
         tree0=['+',leaf0]
     newcost = cost0+cost1+cost_add
-    if not cost >= cost0+cost1+cost_add:
-        print 'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
-    return [[imin,method,sign],tree1,tree0],cost0+cost1+cost_add
+    assert newcost <= cost,'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
+    print 'final cost = %d'%newcost
+    return [[imin,method,sign],tree1,tree0],newcost
 
-def choose_signv(tvon,tvoff,pp1,cost1):
+def choose_signv(tton,ttoff,pp1,cost1):
     """Choose which phase to implement. Return best sop, its cost and if complementwas chosen"""
 ##    pp1=espresso(on,off)
-    tvpp0=tvespresso(tvoff,tvon)
-    pp0 = tv_sop(tvpp0)
+    pp0=tvespresso(ttoff,tton,0,ifesp=if_espresso)
+##    pp0 = tv_sop(tvpp0)
 ##    cost1 = count_and_sop(pp1)
     cost0 = count_fact_sop(pp0)
     if cost1 <= cost0:
@@ -9360,20 +9840,20 @@ def choose_signv(tvon,tvoff,pp1,cost1):
 ##    print 'sign = ',sign
     return pp,cost,sign
 
-def get_split_varv(tvon,tvoff):
+def get_split_varv(tton,ttoff):
     """ pick the variable and method for expansion with the least cost
-    Currently only Shannon is done here"""
+    Currently only Shannon is done here. Uses real espresso on final choice"""
     global if_espresso
     if_espresso_old = if_espresso
-    N=tvon[0].m.N
+    N=tton.m.N
 ##    print N
     cost_min = 100000
-    if_espresso = 0
+    if_espresso = 0 # forces using bbop in espresso to find imin
     for i in range(N):
 ##        print v_in(i,ton)
-        if not v_in(i,or_red(tvon)): # i does not exist in tvon
+        if not v_in(i,tton): # i does not exist in tton
             continue
-        cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,i)
+        cost1,cost0,leaf1,leaf0,method = mux_vv(tton,ttoff,i) #uses ISOP here to find imin
         cost_add = cost_mux
         if not method == 'shannon':
             cost_add = cost_dav
@@ -9387,81 +9867,316 @@ def get_split_varv(tvon,tvoff):
             cost1_min = cost1
             imin=i
             method_min = method
-    if if_espresso_old == 0:
+    if if_espresso_old == 0: #done
         return imin,leaf1_min,leaf0_min,cost1_min,cost0_min,method_min
-    else:
+    else: #we try to get a better cost with espresso, but maybe not
         if_espresso = 1
-        cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,imin)
-        return imin,leaf1,leaf0,cost1,cost0,method
+        cost1e,cost0e,leaf1e,leaf0e,methode = mux_vv(tton,ttoff,imin) #uses full espresso on imin cofactors
+        coste = cost1e+cost0e+cost_add
+##        print 'coste,cost_min = ',(coste,cost_min)
+        if coste >= cost_min: # espresso lost to isop
+            return imin,leaf1_min,leaf0_min,cost1_min,cost0_min,method_min
+        else:
+            return imin,leaf1e,leaf0e,cost1e,cost0e,methode
 
-def tvcofactor(tv,v,ph):
-    tvc=[]
-    for i in range(len(tv)):
-        tvc = tvc + [tv[i].cofactor(v,ph)]
-    return tvc
+def cofactor_isp(f,v):
+    return [f[0].cofactor(v,0),f[1].cofactor(v,0)],[f[0].cofactor(v,1),f[1].cofactor(v,1)]
 
-def mux_vv(tvon,tvoff,v):
-    """ try a cofactoring variable v and return its costs and leaves"""
-    tvon1 = tvcofactor(tvon,v,1)
-    tvoff1 = tvcofactor(tvoff,v,1)
-##    tton1 = tton.cofactor(v,1)
-##    ttoff1 = ttoff.cofactor(v,1)
-    tvleaf1 = tvespresso(tvon1,tvoff1)
-    leaf1 = tv_sop(tvleaf1)
+def cofactor(t_t,v,ph):
+    ttc = t_t.cofactor(v,ph)
+##    tvc=[]
+##    for i in range(len(tv)):
+##        tvc = tvc + [tv[i].cofactor(v,ph)]
+    return ttc
+
+def mux_vv(tton,ttoff,v):
+    """ try a cofactoring variable v and return its costs and leaves
+    if_espresso = 0 ==> uses ISOP"""
+    tton1 = cofactor(tton,v,1)
+    ttoff1 = cofactor(ttoff,v,1)
+    leaf1 = tvespresso(tton1,ttoff1,0,ifesp=if_espresso)
+##    leaf1 = tv_sop(tvleaf1)
     cost1=count_fact_sop(leaf1)
     ################
-    tvon0 = tvcofactor(tvon,v,0)
-    tvoff0 = tvcofactor(tvoff,v,0)
-##    tton0 = tton.cofactor(v,0)
-##    ttoff0 =ttoff.cofactor(v,0)
-    tvleaf0 = tvespresso(tvon0,tvoff0)
-    leaf0 = tv_sop(tvleaf0)
+    tton0 = cofactor(tton,v,0)
+    ttoff0 = cofactor(ttoff,v,0)
+    leaf0 = tvespresso(tton0,ttoff0,0,ifesp=if_espresso)
+##    leaf0 = tv_sop(tvleaf0)
     cost0=count_fact_sop(leaf0)
     return cost1,cost0,leaf1,leaf0,'shannon'
 
-def get_split_var2v(tvon,tvoff):
+def get_split_var2v(tton,ttoff): #find most binate variable
     """ pick the variable and method for expansion with the most binateness
     """
     global if_espresso
-    N=tvon[0].m.N
+    N=tton.m.N
 ##    print N
     cost_min = 100000
-    if_espresso_old = if_espresso
-    if_espresso = 0
-    tvepos = tvespresso(tvon,tvoff)
-    epos = tv_sop(tvepos)
+##    if_espresso_old = if_espresso
+##    if_espresso = 0 # set to have espresso return ISOP
+    epos = tvespresso(tton,ttoff,0,ifesp=if_espresso) # real espresso here
+##    epos = tv_sop(tvepos)
     imin = get_most_binate_var(epos)
-    if_espresso = if_espresso_old
-##    ton = or_red(tvon)
-##    toff = or_red(tvoff)
-    cost1,cost0,leaf1,leaf0,method = mux_vv(tvon,tvoff,imin)
+##    if_espresso = if_espresso_old #restore if_espresso
+    if imin == -1:
+        return -1,0,0,0,0,0
+    cost1,cost0,leaf1,leaf0,method = mux_vv(tton,ttoff,imin) #calls real espresso on imin cofactors
     return imin,leaf1,leaf0,cost1,cost0,method
 
+def bbop(tton,ttoff):
+    isp = ISOP(tton,ttoff)
+    bsp = bsop(tton,~ttoff)
+    res = isp
+    if lit(bsp) < lit(isp):
+        res = bsp
+    return res
 
-def tvespresso(tvon,tvoff):
-    """ tvon and tvoff are ISOPs and vectors of truth tables, one for each cube
+def bsop(tton,uv,varbs=[]):
+    """ like isop, but at each step tries to make result independant of variable v
+    Like isop result is dependent on the order of the variables."""
+    N = m.N
+##    if v == -1:
+##        v = N-1
+    if tton == m.const(0):
+##        print ''
+##        print v,[]
+        return []
+    elif uv == m.const(1) or len(varbs) == N:
+##        print ''
+        bsp = ['-'*N]
+##        print v,bsp
+        return bsp
+    else:
+        v = choose_varb(tton,uv,varbs)
+        new_varbs = varbs + [v]
+        L1 = tton.cofactor(v,1)
+        L0 = tton.cofactor(v,0)
+        U1 = uv.cofactor(v,1)
+        U0 = uv.cofactor(v,0)
+        R0 = bsop(L0&~(U1 | (L1 & ~U0)),U0,new_varbs)
+##        print R0
+        R1 = bsop(L1&~(U0 | (L0 & ~U1)),U1,new_varbs)
+##        print R1
+        R2 = bsop((L0&~tt(R0) | L1&~tt(R1)),U0&U1,new_varbs)
+##        print R2
+        result = R2 + addv(v,1,R1) + addv(v,0,R0)
+        return result
+
+def choose_varb(tton,uv,varbs):
+    N = m.N
+    min_count = 100000
+    minv = -1
+    for i in range(N):
+        if i in varbs:
+            continue
+        else:
+            L1 = tton.cofactor(i,1)
+            L0 = tton.cofactor(i,0)
+            U1 = uv.cofactor(i,1)
+            U0 = uv.cofactor(i,0)
+            both = (L0&~(U1 | (L1 & ~U0))) | (L1&~(U0 | (L0 & ~U1)))
+            cnt = both.count()
+            if cnt < min_count:
+                min_count = cnt
+                minv = i
+    return minv
+
+def exop(f, v=0):
+    """ f is a ISF, [on,off] where each is a tt.
+    esop returns a list of cubes when xor-ed together forms a cover of on and
+    does not intersect off"""
+    N = m.N
+##    print v
+    on = f[0]
+    off = f[1]
+##    assert type(on) == pyaig.truthtables._truth_table, (lb,ub)
+##    assert type(off) == pyaig.truthtables._truth_table, (lb,ub)
+##    assert (not (on == m.const(0) and off == m.const(0))),'both on and off = 0'
+    if on == m.const(0):
+        return []
+    elif off == m.const(0) or v == N-1: #or len(varbs) == N:
+        return ['-'*N]
+    else:
+##        v = choose_varb(tton,uv,varbs)
+##        new_varbs = varbs + [v]
+##        on_1 = on.cofactor(v,1) # pos cofactor is [on1,off1] = f_1
+##        off_1 = off.cofactor(v,1)
+##        on_0 = on.cofactor(v,0) # neg cofactor is [on0,off0] = f_0
+##        off_0 = off.cofactor(v,0)
+        f_0,f_1 = cofactor_isp(f,v)
+##        vxor = ixor(f_0,f_1)
+        ##        f_1 = [on_1,off_1]
+##        vxor = [on_1&off_0|on_0&off_1,on_1&on_0|off_1&off_0] #xor of f_0 and f_1
+##            # or ixor is [(f[0]&~g[1])|(~f[1]&g[0]),(f[0]&g[0])|(~f[1]&~g[1])]
+        R0 = exop(f_0,v+1)
+        print R0
+        R1 = exop(f_1,v+1)
+        print R1
+##        R2 = exop(vxor,v+1)
+##        print R2
+        n0 = len(R0)
+        n1 = len(R1)
+        ttR0 = tt(R0)
+        ttR1 = tt(R1)
+        if n0 <= n1: # Make R2'
+            tv0 = m.var(v)&ttR0
+            R2_p = exop([tv0&f_1[0],tv0&f_1[1]],v)
+            ttR2 = tv0 &~tt(R2_p) | (~tv0)&tt(R2_p)
+            R2 = sop(ttR2)
+            n2 = len(R2)
+        else:
+            tv1 = (~m.var(v))&ttR1
+            R2_p = exop([tv1&f_1[0],tv1&f_1[1]],v)
+            ttR2 = tv1 &~tt(R2_p) | (~tv1)&tt(R2_p)
+            R2 = sop(ttR2)
+            n2 = len(R2)
+        print n0,n1,n2
+        mx = max(n0,n1,n2)
+        if n0 == mx:
+            return R1 + R2  #negative davio 
+        if n1 == mx:
+            return R0 + R2 # poaitive davio
+        else:
+            return addv(v,0,R0) + addv(v,1,R1) # shannon
+
+
+    
+
+##def bsopr(tton,ttup,v=-1):
+##    """ like isop, but at each step tries to make result independant of variable v
+##    Like isop result is dependent on the order of the variables."""
+##    N = m.N
+##    if v == -1:
+##        v = N-1
+##    if tton == m.const(0):
+##        return []
+##    elif ttup == m.const(1):
+####        print ''
+##        bsp = ['-'*N]
+####        print v,bsp
+##        return bsp
+##    else:
+##        uv = ttup
+##        L1 = tton.cofactor(v,1)
+##        L0 = tton.cofactor(v,0)
+##        U1 = uv.cofactor(v,1)
+##        U0 = uv.cofactor(v,0)
+##        R0 = bsopr(L0&~U1,U0,v-1)
+####        print R0
+##        R1 = bsopr(L1&~U0,U1,v-1)
+####        print R1
+##        R2 = bsopr((L0&~tt(R0) | L1&~tt(R1)),U0&U1,v-1)
+####        print R2
+##        result = R2 + addv(v,1,R1) + addv(v,0,R0)
+##        return result
+##
+##def bsop(tton,ttoff):
+##    resf=bsopf(tton,~ttoff)
+##    resr = bsopr(tton,~ttoff)
+##    result = ired(resf+resr,tton)
+##    return result
+
+
+##    on_x = onv1 | onv0
+##    assert on_x & tton == tton, 'on_x does not cover tton'
+####    off_x = offv1 | offv0
+##    off_x = ttoff
+##    assert off_x & ttoff == ttoff, 'off_x does not cover ttoff'
+##    if on_x & off_x == m.const(0): # result is independent of variable v
+####        print 'result independent of variable %d'%v
+##        bsp = bsop(on_x, off_x, v+1)
+##        print ''
+##        print '*',v,bsp
+##        return bsp
+##    else:
+##        bp = bsop(onv1, offv1,v+1)
+##        bn = bsop(onv0, offv0,v+1)
+##        x2,x1,x0=merge(bp,bn)
+##        bsp =  x2+addv(v,1,x1)+addv(v,0,x0)
+##        print ''
+##        print v,bsp
+##        assert tt(bsp) & tton == tton, 'onset not covered. v, x2,x1,x0 = %d,   %s,   %s,   %s'%(v,str(x2),str(x1),str(x0))
+##        return bsp
+        
+
+def addv(v,ph,s):
+    res = []
+    for i in range(len(s)):
+        si = s[i]
+        lsi = list(si)
+        assert lsi[v] == '-', 's is not independent of v'
+        lsi[v] = '01'[ph]
+        res = res + [strl_str(lsi)]
+    return res
+
+##def addv(v,ph,s):
+##    """ puts in literal [v,ph] into sop s """
+##    tts = tt(s)
+##    return sop(tts & m.var(v,ph))
+    
+##def merge(sp,sn):
+##    """ finds common cubes and puts them in res2 and takes these away from sp and sn """
+##    s2 = sp+sn
+##    s2.sort()
+##    res2 = []
+##    for i in range(len(s2)-1):
+##        if s2[i] == s2[i+1]:
+##            res2 = res2 + [s2[i]]
+##    res1 = []
+##    for i in range(len(sp)):
+##        if not sp[i] in res2:
+##            res1 = res1 + [sp[i]]
+####            print res1
+##    res0 = []
+##    for i in range(len(sn)):
+##        if not sn[i] in res2:
+##            res0 = res0 + [sn[i]]
+##    return res2,res1,res0
+            
+def tvespresso(tton,ttoff,returntv=1,ifesp=1):
+    """ tton and ttoff are ISOPs and truth tables
+    returntv => return a tv, else sop
+    ifesp => use full espresso, else use isop
     """
-##    print len(tvon),len(tvoff)
-    if len(tvon) == 0: # on = [] so 0
+    global m,fname,n_pi
+    m=tton.m
+##    print len(tton),len(ttoff)
+    if tton == m.const(0): # on = 0 so []
+####        print ''
+        return []
+    if ttoff==m.const(0): #no offset so return 1
 ##        print ''
-        return tvon
-    if len(tvoff)==0: #no offset so return 1
-##        print ''
-        return m.const(1)
+        if returntv:
+            return [m.const(1)]
+        else:
+            return sop(m.const(1))
 ##    time0=time.time()
-    if not if_espresso:
-        return v_ISOP_v(tvon,tvoff)
-##    tv1=list(tvon)        # new
-    tv1 = v_ISOP_v(tvon,tvoff) # new
-    tton = or_red(tvon)
+    if not ifesp:
+        if returntv:
+            return sop_tv(bbop(tton,ttoff))
+        else:
+            return bbop(tton,ttoff)
+##    tv1=list(tton)        # new
+##    isop = ISOP(tton,ttoff) # new
+##    print 'isop: %d, %d'%(len(isop), lit(isop))
+##    bsp = bsop(tton,~ttoff)
+##    print 'bsop: %d, %d'%(len(bsp), lit(bsp))
+##    if lit(bsp) < lit(isop):
+##        isop = bsp
+    isop = bbop(tton,ttoff)
+    tv1 = sop_tv(isop)
+    Jess,nJess = qessentials(isop) #returns list of essential primes
+    tv1,tvessen = sublist(tv1,nJess),sublist(tv1,Jess)
+##    isop,isopessen = sublist(tv1,nJess),sublist(tv1,Jess)
+##    tton = or_red(tton)
 ##    print sop(tton)
     while True: #iterate until no reduction
         size=len(tv1)
         tv1old = tv1
 ##        print 'before: ',len(tv1),litv(tv1)
-        tvon_red = reduce_tv(tv1,tton)
-##        print 'after ', len(tvon_red),litv(tvon_red)
-        tv1=two_levelv(tvon_red,tvoff)
+        tv1_red = reduce_tv(tv1,tton,tvessen)
+##        print 'after ', len(tton_red),litv(tton_red)
+        tv1=two_levelv(tv1_red,ttoff)
 ##        print 'two_level: ',len(tv1),litv(tv1)
         if len(tv1)>=size:
             break
@@ -9474,7 +10189,11 @@ def tvespresso(tvon,tvoff):
 ##    print 'time of espresso = ',time.time()-time0
 ##    print 'espresso: cubes = %d, lits = %d'%size_of(t1)
 ##    print ''
-    return tv1
+    res = tv1+tvessen
+    if returntv:
+        return res
+    else:
+        return tv_sop(res)
 
 def max_reduce(tv,j):
     tvj = tv[j]
@@ -9514,8 +10233,30 @@ def essentials(sop_in,tton,ttoff):
                 break # go to next cube
         if ans:
             ess = ess + [j] # aomething left in jth cube, so essential
-    print ess
+##    print ess
     return sublist(sop_in,ess)
+
+def qessentials(sop_in):
+    """ quick finding of minterm primes plus single literal primes """
+    ness = ess = []
+    for j in range(len(sop_in)):
+        sj=sop_in[j]
+        if not '-' in sj: # a minterm prime is essential
+            ess = ess + [j]
+            continue
+        count = 0
+        for i in range(m.N):
+            if sj[i] == '-':
+                continue
+            else:
+                count =count +1
+        if count == 1: # single literal prime is essential
+            ess = ess + [j]
+        else:
+            ness = ness + [j]
+##    print ess
+    return ess,ness
+
 
 def litv(tv):
     count=0
@@ -9572,10 +10313,15 @@ def t_ISOP_v(tton,ttoff):
     """ inputs are truth table vectors """
     res = m.isop(tton,~ttoff,0)
 ##    print res
-    return set_tv(res[0])
+    result = set_tv(res[0])
+    check_ired(result,tton)
+    return result
 ##    ttr=res[1]
 ##    tvr = tt_tv(ttr)
 ##    return tvr
+
+def tv_tt(tv):
+    return or_red(tv)
 
 def or_red(tv):
     res = m.const(0)
@@ -9590,13 +10336,12 @@ def or_redx(tv,j):
             res = res|tv[i]
     return res
 
-def two_levelv(tvon,tvoff,rev=1):
+def two_levelv(tvon,ttoff,rev=1):
     """ only used in espresso. Makes primes and removes duplicates and selects
     a subset in order of which cover the most remaining minterms of 'on' """
     time0=time.time()
     tvc1= []
     ttc1=m.const(0)
-    ttoff=or_red(tvoff)
     tton = or_red(tvon)
     p1=make_primesv(tvon,ttoff)
     if rev:
@@ -9678,19 +10423,26 @@ def max_countv(tvs,tton):
             maxj = j
     return maxj,maxc
 
-def reduce_tv(tvs,tton):
+def reduce_tv(tvs,tton,essen=[]):
     """reduces cube in tvs to a minimum cube containing onset minterms not in rest of cubes
     Replaces each ttcube with reduced ttube. Done in the given given order of cubes"""
 ##    ontt = tt(on)
+    if tvs == []:
+        return []
+    m = tton.m
     N = m.N
 ##    stt = s_stt(s)
     J = range(len(tvs))
     J.reverse()
     tvpp=list(tvs)
+    ttess = m.const(0)
+    tton1=tton
+    if not essen == []:
+##        print essen
+        ttess = or_red(essen)
+        tton1 = tton&~ttess
     for j in J:
-        tvj = tvs[j]&tton & ~or_redx(tvpp,j) #care part of j not overed by rest
-##        tvj = tvj & ~sttx(stt,j)
-##        stt[j]=ttj
+        tvj = tvs[j]&tton1 & ~or_redx(tvpp,j) #care part of j not overed by rest
         tvpp[j]=min_cubev(tvj) # put back reduced cube for j
     return tvpp
 
@@ -9716,7 +10468,6 @@ def ttISF_tvISF(ttISF):
     """ converts a list of ISFs, each given as a tt, to a list of ISFs each given as
     a [tv for on, tv for off]
     """
-##    print len(ttISF)
     res = []
     for j in range(len(ttISF)):
         ttj = ttISF[j] #jth PO ISF
@@ -9727,8 +10478,6 @@ def ttISF_tvISF(ttISF):
         else: 
             newres = [[tt_tv(ttj[0]),tt_tv(ttj[1])]] 
         res = res + newres
-##    print len(res)
-##    print len(res[0])
     return res
 
 def tt_tv(tt):
@@ -9746,35 +10495,35 @@ def sop_tv(s):
 
 ################# espresso ##########                            
 
-def espresso(on,off):
-    """ on and off are SOPs
-    returns a SOP """
-    if len(on) == 0: # on = [] so 0
-        return on
-    if len(off)==0: #no offset so return 1
-        n_v = len(on[0])
-        return ['%s'%'-'*n_v]
-##    time0=time.time()
-    if not if_espresso:
-        return ISOP(tt(on),tt(off))
-    s1=list(on)
-    while True: #iterate until no reduction
-        size=len(s1)
-        s1old = s1
-        s1=two_level(reduce_sop(s1,on),off)
-        if len(s1)>=size:
-            break
-        s1=shffle(s1)
-    if len(s1) > len(s1old):
-        s1=s1old
-    elif len(s1) == len(s1old):
-        if lit(s1old)<lit(s1):
-            s1=s1old
-##    print 'time of espresso = ',time.time()-time0
-##    print 'espresso: cubes = %d, lits = %d'%size_of(t1)
-    return s1
+##def espresso(on,off):
+##    """ on and off are SOPs
+##    returns a SOP """
+##    if len(on) == 0: # on = [] so 0
+##        return on
+##    if len(off)==0: #no offset so return 1
+##        n_v = len(on[0])
+##        return ['%s'%'-'*n_v]
+####    time0=time.time()
+##    if not if_espresso:
+##        return ISOP(tt(on),tt(off))
+##    s1=list(on)
+##    while True: #iterate until no reduction
+##        size=len(s1)
+##        s1old = s1
+##        s1=two_level(reduce_sop(s1,on),off)
+##        if len(s1)>=size:
+##            break
+##        s1=shffle(s1)
+##    if len(s1) > len(s1old):
+##        s1=s1old
+##    elif len(s1) == len(s1old):
+##        if lit(s1old)<lit(s1):
+##            s1=s1old
+####    print 'time of espresso = ',time.time()-time0
+####    print 'espresso: cubes = %d, lits = %d'%size_of(t1)
+##    return s1
 
-def expand(cube,j):
+def expand_cube(cube,j):
     """expands a cube along the jth direction by putting in a '-' there """
     res=''
     for i in range(len(cube)):
@@ -9783,6 +10532,28 @@ def expand(cube,j):
         else:
             res = res+cube[i]
     return res
+
+def reverse_st(st):
+    strl=list(st)
+    strl.reverse()
+    return strl_str(strl)
+
+def reverse_sop(s):
+    srev = []
+    for j in range(len(s)):
+        srev = srev + [reverse_st(s[j])]
+    return srev
+        
+
+def str_strl(st):
+    return list(st)
+
+def strl_str(strl):
+    st=''
+    for j in range(len(strl)):
+        st=st+strl[j]
+    return st
+        
 
 
 def make_primes(x11,x0,rev=0):
@@ -9954,26 +10725,37 @@ def count_and_sop(sop):
     c = lit(sop) -1
     return c
 
-def count_fact_sop(sop):
-    if len(sop) <= 1:
-        return count_and_sop(sop)
-    count2,count1,count0 = binate_count(sop)
+def count_fact_sop(sopp):
+##    print sopp
+    if lit(sopp) == 0:
+##        print -1
+        return -1
+    if len(sopp) <= 1:
+        c = count_and_sop(sopp)
+##        print c
+        return c
+    count2,count1,count0 = binate_count(sopp)
     jmax,count,sign  = get_max(count1,count0)
     if count == 1:
-        return count_and_sop(sop)
+        c=count_and_sop(sopp)
+##        print c
+        return c
     else:
-        lsop,rsop = fctr(sop,jmax,sign)
+        lsop,rsop = fctr(sopp,jmax,sign)
 ##        print lsop,rsop
+        assert len(lsop) > 1,sopp
         cL = count_fact_sop(lsop) +1
         cR = count_fact_sop(rsop)
-        return cR + cL +1
+        c=cR + cL +1
+##        print c
+        return c
 
 def fact(sop):
     if len(sop) <= 1:
         return sop
     count2,count1,count0 = binate_count(sop)
     jmax,count,sign  = get_max(count1,count0)
-    if count == 1:
+    if count <= 1:
         return sop
     else:
         lsop,rsop = fctr(sop,jmax,sign)
@@ -9985,8 +10767,8 @@ def fact(sop):
         return [[jmax,sign],[cL,cR]]
 
 def fctr(sop,j,sign):
-    """ factors literal (j,sign) out of SOP. Returns two sop's, Lis
-    those with literal reoved and R the remaining unchanged."""
+    """ factors literal (j,sign) out of SOP. Returns two sop's, L is
+    those with literal removed and R the remaining unchanged."""
     c = ['0','1']
     ph = c[sign]
     L=R=[]
@@ -10053,7 +10835,7 @@ def ppt_all(t,c):
         print ' '
         print 'PO = %d, cost = %d'%(i,c[i])
         ppt(t[i])
-    
+    print 'cost = ',p_red(c)
 def ppt(tree):
     """header fir pretty printing tree"""
     global tab
@@ -10073,6 +10855,9 @@ def pprint_tree(spacer,tree):
         print spacer+str(header)
         pprint_tree(space,tree[1])
         pprint_tree(space,tree[2])
+    elif len(header)== 4: # an xor
+        print spacer+str(header)
+        pprint_tree(space,tree[1])
     else:
         if header == '+' or header == '-': # a tree_sop
             print spacer+header
@@ -10081,9 +10866,12 @@ def pprint_tree(spacer,tree):
             return
         s=tree # no tree header
         #we have either sop or fact_sop
-        if s == [] or lit(s) == 0:
+        if s == []:
             print spacer+'[]'
 ##            print 'ss = ',s
+            return
+        if lit(s) == 0:
+            print spacer,s[0]
             return
         if type(s[0][0]) == str: # a sop
             #factor it
@@ -10134,9 +10922,6 @@ def pp_fact(spacer,f,tabb='    '):
         pp_fact(spacer,f[1],tab)
         return
                 
-        
-
-
 def print_sop(space,s):
     for i in range(len(s)):
         print space,s[i]
@@ -10151,7 +10936,7 @@ def mux_init(on,off):
     #begin the recursion
     if cost > 0:
         tree_r,cost = cof_recur(tt(on),tt(off),pp,cost)
-        print ''
+##        print ''
 ##        ppt(tree_r)
     else:
         tree_r = ['+',pp]
@@ -10232,148 +11017,164 @@ def binate_count(ss):
     return count2,count1,count0
 
 def get_most_binate_var(ss):
-    count2,count1,count0=binate_count(ss)
+    if len(ss) < 2:
+        return -1
+    Jess,nJess = qessentials(ss)
+    if len(nJess) < 2: 
+        return -1
+    ness = sublist(ss,nJess)
+    count2,count1,count0=binate_count(ness)
     abmin=cmin=100000
     for j in range(len(count1)):
-        c2 = count2[j]
-        ab = abs(count1[j]-count0[j])
-        if  c2 < cmin:
-            jmin=j
-            cmin = c2
-            abmin = ab
-        if c2 == cmin and ab < abmin:
-            jmin=j
-            cmin = c2
-            abmin = ab
+        cc = count0[j]+count1[j]+2*count2[j]
+        if cc < cmin: # get ine with least total cubes
+            jmin = j
+            cmin = cc
+            abmin = abs(count1[j]-count0[j])
+        elif cc == cmin:
+            if abs(count1[j]-count0[j]) < abmin: #break ties with more even split
+                jmin = j
+                abmin = abs(count1[j]-count0[j])
+##        c2= count2[j]
+##        ab = abs(count1[j]-count0[j])
+##        if  c2 < cmin: # get min of count2
+##            jmin=j
+##            cmin = c2
+##            abmin = ab 
+##        elif c2 == cmin and ab < abmin: # break ties with ab
+##            jmin=j
+##            cmin = c2
+##            abmin = ab
+    assert jmin > -1, jmin
     return jmin                       
     
-def cof_recur(ton,toff,sop_in,cost):
-    """ cofactoring wrt a single variable has to beat incoming cost
-    a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
-    the input is the ISF (ton,toff) to be implemented.
-    Incoming cost is an upper bound for implementation.
-    This returns (sop_in, cost) if there is no expansion that can beat cost.
-    Otherwise, it returns expansion tree for the ISF.
-    (ton,toff) is the current ISF and sop_in is its SOP
-    """
-##    print ''
-##    print 'in: ',sop_in
-##    if leaf == []:
-##        print 'leaf is empty'
-    if lit(sop(ton))<=1:#we are at a leaf because ton is a single variable. don't do anything
-##        print ''
-##        print 'out: ',['+',sop_in]
-        return ['+',sop_in],cost
-    N=ton.m.N
-    ton_init = ton
-    sop_r,cost,sign =choose_sign(ton,toff,sop_in,cost)
-    assert ton==ton_init,'ton was switched internally'
-    if sign == '-':
-        ton,toff = toff,ton
-##        eoffon= espresso(sop(ton),sop(toff))
-##        if not eoffon == sop_r:
-##            print eoffon,sop_r
-##            assert False,'ERROR'
-##    imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
-    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2(ton,toff)
-    # sign us '+' or '-'.  If '-' then ton and toff need to be switched
-    #method at this point is 'shannon'
-    cost_add = cost_mux
-    newcost1 = cost0+cost1+cost_add
-##    print cost,newcost1,cost1,cost0
-    if newcost1 >= cost: # try a different split choice
-        imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old = imin,list(leaf1),list(leaf0),cost1,cost0,method
-        imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
-        newcost2 = cost0+cost1+cost_add
-##        print cost,newcost2,cost1,cost0
-        if newcost2 >= cost: #try davio
-            return [sign,sop_r],cost
-##            #go back to first set
-##            if newcost1 < newcost2:
-##                print 'switching back to first set'
-##                imin,leaf1,leaf0,cost1,cost0,method = imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old
-######### Trmporarily disabling Davio ##########
-####    or leaf1 == [] or leaf0 == []: #we are at a leaf. don't do anything
-##            print 'Trying Davio'
-##            leaf2,cost2 = try_davio(ton,toff,imin) #just trying last var chosen
-##            print 'f2, cost2 = ',
-##            print leaf2,cost2
-##            newcost_dav = cost2+min(cost0,cost1)+cost_dav
-##            print 'Davio would give newcost = %d'%newcost_dav
-##            print cost,newcost_dav,cost2,cost1,cost0
-##            if newcost_dav >= cost:
-##                print 'out: ',[sign,sop_r]
-##                print ''
-##                return [sign,sop_r],cost
-##            else:#davio wins. decide + or -
-##                print 'Davio wins'
-##                print 'ton = ',ton
-##                print 'toff = ',toff
-##                print 'leaf0 = ',leaf0
-##                print 'leaf1 = ',leaf1
-##                print 'leaf2 = ',leaf2 
-##                cost_add = cost_dav
-##                if cost0 <= cost1:
-##                    method = '+davio'
-##                    leaf1 = leaf0
-####                    leaf0 = list(leaf2)
-##                    cost1 = cost0
-####                    cost0 = cost2
-##                else:
-##                    method = '-davio'
-##                leaf0 = leaf2
-##                cost0 = cost2
-##    print 'splitting variable = %d, method = %s'%(imin,method)
-    #recur here since a variable exists, namely imin, whose two cofactors can be
-    #implemented as sop's plus a mux with less cost than the incoming 'cost'
-##    print 'costs before: ',cost,cost1_min,cost0_min
-    if cost1 > 0: #a single literal cube has 0 cost
-        ton1=ton.cofactor(imin,1)
-        toff1=toff.cofactor(imin,1)
-        tree1,cost1 = cof_recur(ton1,toff1,leaf1,cost1)
-##        print ""
-##        print 'out: ',tree1
-    else:
-        tree1=['+',leaf1]
-    if cost0 > 0:
-        ton0=ton.cofactor(imin,0)
-        toff0=toff.cofactor(imin,0)
-        tree0,cost0 = cof_recur(ton0,toff0,leaf0,cost0)
-##        print ''
-##        print 'out: ',tree0
-    else:
-        tree0=['+',leaf0]
-##    print 'initial cost = %d, final cofactor costs = %d,%d'%(cost,cost1,cost0)
-    newcost = cost0+cost1+cost_add
-    if not cost >= cost0+cost1+cost_add:
-        print 'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
-##    print 'cof_recur returns: ',[sop_in1,sop_in0],cost0+cost1+cost_add
-##    print 'out: ',[[imin,method,sign],tree1,tree0]
-##    print ''
-    return [[imin,method,sign],tree1,tree0],cost0+cost1+cost_add
+##def cof_recur(ton,toff,sop_in,cost):
+##    """ cofactoring wrt a single variable has to beat incoming cost
+##    a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
+##    the input is the ISF (ton,toff) to be implemented.
+##    Incoming cost is an upper bound for implementation.
+##    This returns (sop_in, cost) if there is no expansion that can beat cost.
+##    Otherwise, it returns expansion tree for the ISF.
+##    (ton,toff) is the current ISF and sop_in is its SOP
+##    """
+####    print ''
+####    print 'in: ',sop_in
+####    if leaf == []:
+####        print 'leaf is empty'
+##    if lit(sop(ton))<=1:#we are at a leaf because ton is a single variable. don't do anything
+####        print ''
+####        print 'out: ',['+',sop_in]
+##        return ['+',sop_in],cost
+##    N=ton.m.N
+##    ton_init = ton
+##    sop_r,cost,sign =choose_sign(ton,toff,sop_in,cost)
+##    assert ton==ton_init,'ton was switched internally'
+##    if sign == '-':
+##        ton,toff = toff,ton
+####        eoffon= espresso(sop(ton),sop(toff))
+####        if not eoffon == sop_r:
+####            print eoffon,sop_r
+####            assert False,'ERROR'
+####    imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
+##    imin,leaf1,leaf0,cost1,cost0,method = get_split_var2(ton,toff)
+##    # sign us '+' or '-'.  If '-' then ton and toff need to be switched
+##    #method at this point is 'shannon'
+##    cost_add = cost_mux
+##    newcost1 = cost0+cost1+cost_add
+####    print cost,newcost1,cost1,cost0
+##    if newcost1 >= cost: # try a different split choice
+##        imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old = imin,list(leaf1),list(leaf0),cost1,cost0,method
+##        imin,leaf1,leaf0,cost1,cost0,method = get_split_var(ton,toff)
+##        newcost2 = cost0+cost1+cost_add
+####        print cost,newcost2,cost1,cost0
+##        if newcost2 >= cost: #try davio
+##            return [sign,sop_r],cost
+####            #go back to first set
+####            if newcost1 < newcost2:
+####                print 'switching back to first set'
+####                imin,leaf1,leaf0,cost1,cost0,method = imin_old,leaf1_old,leaf0_old,cost1_old,cost0_old,method_old
+########### Trmporarily disabling Davio ##########
+######    or leaf1 == [] or leaf0 == []: #we are at a leaf. don't do anything
+####            print 'Trying Davio'
+####            leaf2,cost2 = try_davio(ton,toff,imin) #just trying last var chosen
+####            print 'f2, cost2 = ',
+####            print leaf2,cost2
+####            newcost_dav = cost2+min(cost0,cost1)+cost_dav
+####            print 'Davio would give newcost = %d'%newcost_dav
+####            print cost,newcost_dav,cost2,cost1,cost0
+####            if newcost_dav >= cost:
+####                print 'out: ',[sign,sop_r]
+####                print ''
+####                return [sign,sop_r],cost
+####            else:#davio wins. decide + or -
+####                print 'Davio wins'
+####                print 'ton = ',ton
+####                print 'toff = ',toff
+####                print 'leaf0 = ',leaf0
+####                print 'leaf1 = ',leaf1
+####                print 'leaf2 = ',leaf2 
+####                cost_add = cost_dav
+####                if cost0 <= cost1:
+####                    method = '+davio'
+####                    leaf1 = leaf0
+######                    leaf0 = list(leaf2)
+####                    cost1 = cost0
+######                    cost0 = cost2
+####                else:
+####                    method = '-davio'
+####                leaf0 = leaf2
+####                cost0 = cost2
+####    print 'splitting variable = %d, method = %s'%(imin,method)
+##    #recur here since a variable exists, namely imin, whose two cofactors can be
+##    #implemented as sop's plus a mux with less cost than the incoming 'cost'
+####    print 'costs before: ',cost,cost1_min,cost0_min
+##    if cost1 > 0: #a single literal cube has 0 cost
+##        ton1=ton.cofactor(imin,1)
+##        toff1=toff.cofactor(imin,1)
+##        tree1,cost1 = cof_recur(ton1,toff1,leaf1,cost1)
+####        print ""
+####        print 'out: ',tree1
+##    else:
+##        tree1=['+',leaf1]
+##    if cost0 > 0:
+##        ton0=ton.cofactor(imin,0)
+##        toff0=toff.cofactor(imin,0)
+##        tree0,cost0 = cof_recur(ton0,toff0,leaf0,cost0)
+####        print ''
+####        print 'out: ',tree0
+##    else:
+##        tree0=['+',leaf0]
+####    print 'initial cost = %d, final cofactor costs = %d,%d'%(cost,cost1,cost0)
+##    newcost = cost0+cost1+cost_add
+##    if not cost >= cost0+cost1+cost_add:
+##        print 'counts not compatible: cost = %d, cofactors count = %d'%(cost,newcost)
+####    print 'cof_recur returns: ',[sop_in1,sop_in0],cost0+cost1+cost_add
+####    print 'out: ',[[imin,method,sign],tree1,tree0]
+####    print ''
+##    return [[imin,method,sign],tree1,tree0],cost0+cost1+cost_add
 
-def try_davio(ton,toff,v):
-    """ f,f0,f1,f2 """
-    f = [toff,ton]
-    f0 = [f[0].cofactor(v,0),f[1].cofactor(v,0)]
-    f1 = [f[0].cofactor(v,1),f[1].cofactor(v,1)]
-    f2 = ixor(f0,f1)
-    f2_sop = espresso(sop(f2[1]),sop(f2[0]))
-    cost = count_fact_sop(f2_sop)
-    return f2_sop,cost
+##def try_davio(ton,toff,v):
+##    """ f,f0,f1,f2 """
+##    f = [toff,ton]
+##    f0 = [f[0].cofactor(v,0),f[1].cofactor(v,0)]
+##    f1 = [f[0].cofactor(v,1),f[1].cofactor(v,1)]
+##    f2 = ixor(f0,f1)
+##    f2_sop = espresso(sop(f2[1]),sop(f2[0]))
+##    cost = count_fact_sop(f2_sop)
+##    return f2_sop,cost
 
-def mux_v(tton,ttoff,v):
-    """ try a cofactoring variable v and return its costs and leaves"""
-    tton1 = tton.cofactor(v,1)
-    ttoff1 = ttoff.cofactor(v,1)
-    leaf1 = espresso(sop(tton1),sop(ttoff1))
-    cost1=count_fact_sop(leaf1)
-    ################
-    tton0 = tton.cofactor(v,0)
-    ttoff0 =ttoff.cofactor(v,0)
-    leaf0 = espresso(sop(tton0),sop(ttoff0))
-    cost0=count_fact_sop(leaf0)
-    return cost1,cost0,leaf1,leaf0,'shannon'
+##def mux_v(tton,ttoff,v):
+##    """ try a cofactoring variable v and return its costs and leaves"""
+##    tton1 = tton.cofactor(v,1)
+##    ttoff1 = ttoff.cofactor(v,1)
+##    leaf1 = espresso(sop(tton1),sop(ttoff1))
+##    cost1=count_fact_sop(leaf1)
+##    ################
+##    tton0 = tton.cofactor(v,0)
+##    ttoff0 =ttoff.cofactor(v,0)
+##    leaf0 = espresso(sop(tton0),sop(ttoff0))
+##    cost0=count_fact_sop(leaf0)
+##    return cost1,cost0,leaf1,leaf0,'shannon'
 
 
 def v_in(v,ttr):
@@ -10456,6 +11257,7 @@ def sop2sig(net,sop):
 
 def tree2sig(net,tree):
     """ creates a sig from a tree. A tree is either a 3-tuple or a sop"""
+##    print 'length of tree = ',len(tree)
     if tree == []:
         return ~net.get_True()
     sign = tree[0]
@@ -10465,9 +11267,31 @@ def tree2sig(net,tree):
             sig = ~sig
         return sig                    
     PIs=PIsOf(net)
+    assert len(tree[0]) > 2, tree[0]
+    if len(tree) == 2: #an XOR
+##        print tree[0]
+        assert tree[0][1] == 'xor', tree[0][1]
+        variable = tree[0][0]
+        xsign = tree[0][2]
+        sign = tree[0][3]
+        ph = 1
+        if variable < 0:
+            ph = 0
+            variable = -(variable+1) # -1->0,-2 -> 1
+        variable= PIs[variable]
+        if ph == 0:
+            variable = ~variable
+        N1 = tree2sig(net,tree[1])
+        sig = variable ^ N1 # xor with the literal
+        if xsign == '-': #add an invertor
+            sig = ~sig
+        if sign == '-':
+            sig = ~sig
+        return sig
     variable = PIs[tree[0][0]] #splitting variable
     method = tree[0][1]
     sign = tree[0][2] # '-' means complement was implemented
+    assert len(tree) == 3, tree
     N1 = tree2sig(net,tree[1])
     N2 = tree2sig(net,tree[2])
     if method == 'shannon': #N1 = f_1, N2 = f_0
@@ -10530,33 +11354,108 @@ def combine_two_nets(N_1,N_2):
 
 
 ################# manipulating ISFs ###############
-##""" an ISF is [offset,onset] where each is a truthtable."""
-##def iand(f,g):
-##    """ an ISF is [offset,onset]"""
-##    return [(f[0]|g[0]),(f[1]&g[1])]
-##
-##def ior(f,g):
-##    """ same as inot(iand(inot(f),inot(g)))"""
-####    res1 = inot(iand(inot(f),inot(g)))
-##    res2 = [(f[0]&f[0]),(f[1]|g[1])]
-####    if not res1 == res2:
-####        print 'DeMorgan does work on ISPs:'
-####        #res 1 = %s, res2 = %s'%(res1,res2)
-##    return res2
-##
-##def inot(f):
-##    return [f[1],f[0]]
+""" an ISF is and interval, [on,off] where each is a truthtable."""
+def iand(f,g):
+    """ an ISF is [offset,onset]"""
+    return [(f[0]&g[0]),(f[0]&~g[1])| (~f[1]&g[0])|(~f[1]&~g[1])]
+
+def ior(f,g):
+    """ same as inot(iand(inot(f),inot(g)))"""
+##    res = inot(iand(inot(f),inot(g)))
+    res = [(f[0]|g[0]),(~f[1]&~g[1])]
+    return res
+
+def inot(f):
+    return [~f[1],~f[0]]
 
 def ixor(f,g):
-    """ f and g are ISPs"""
+    """ f and g are ISPs given as [on,off["""
 ##    fb = inot(f)
 ##    gb = inot(g)
 ##    y1 = iand(fb,g)
 ##    y2 = iand(f,gb)
 ##    return ior(y1,y2)
-    res0=~f[0]&g[0] | f[0]&~g[0]
-    res1 = ~f[1]&g[1] | f[1]&~g[1]
-    return [res0,res1]
+##    res =ior(iand(inot(f),g),iand(f,inot(g)))
+##    res = [(f[0]&~g[1])|(~f[1]&g[0]),(f[0]&g[0])|(~f[1]&~g[1])]
+    res = [(f[0]&g[1])|(f[1]&g[0]),(f[0]&g[0])|(f[1]&g[1])]
+
+    return res
+
+def get_xor_var(tton,ttoff):
+    xor_cost = 2
+    m = tton.m
+    N = m.N
+##    tvon = tt_tv(tton)
+##    tvoff = tt_tv(ttoff)
+##    s1 = tv_sop(tvespresso(tvon,tvoff))
+    s1=bbop(tton,ttoff)
+    c1 = count_fact_sop(s1)
+    c_min = c1
+    i_min = -1
+    ph_min = 1
+    s_min=s1
+    sign = '+'
+##    s0 = tv_sop(tvespresso(tvoff,tvon))
+    s0=bbop(ttoff,tton)
+    c0 = count_fact_sop(s0)
+    if c0<c_min:
+        c_min = c0
+        i_min = -1
+        ph_min = 0
+        s_min=s0
+        tton,ttoff = ttoff,tton
+        sign = '-'
+    c_min_init =c_min
+##    print 'none: + = %d, - = %d'%(c1,c0)
+    for i in range(N):
+        r1,r0 = var_xor(i,1,tton,ttoff) # results are tt
+##        s = tv_sop(tt_tv(r1),tt_tv(r0)))
+        s = bbop(r1,r0)
+        c1 = count_fact_sop(s)+xor_cost
+        if c1<c_min:
+            c_min = c1
+            i_min = i
+            ph_min = 1
+            s_min=s
+##            r1_min = r1
+##            r0_min = r0
+##        r1,r0 = var_xor(i,0,tton,ttoff)
+##        s = tv_sop(tvespresso(tt_tv(r1),tt_tv(r0)))
+        s = bbop(r0,r1)
+        c0 = count_fact_sop(s)+xor_cost
+        if c0<c_min:
+            c_min = c0
+            i_min = i
+            ph_min = 0
+            s_min = s
+##            r1_min = r1
+##            r0_min = r0
+##        print 'var %d : + = %d, - = %d'%(i,c1,c0)
+    ph = ['-','+'][ph_min]
+    if i_min > -1: #found a good xor variable
+        r1,r0 = var_xor(i_min,ph_min,tton,ttoff)
+##        tvon = tt_tv(r1)
+##        tvoff = tt_tv(r0)
+        s_esp = tvespresso(r1,r0,0,ifesp=if_espresso)
+        c_esp = count_fact_sop(s_esp) + xor_cost
+##        print 'espresso based xor cost = %d'%c_esp
+        if c_esp < c_min:
+            c_min = c_esp
+            s_min = s_esp
+        print 'xor cost = %d'%c_min
+        return c_min,i_min,ph_min,s_min,r1,r0,sign
+    else:
+        return 0,i_min,0,0,0,0,0
+                       
+
+def var_xor(v,ph,on,off):
+    m=on.m
+    nph = 0
+    if ph == 0:
+        nph = 1
+    new_on = m.var(v,ph)&off | m.var(v,nph)&on
+    new_off = m.var(v,ph)&on | m.var(v,nph)&off
+    return new_on,new_off
 
 ##def icofactor(f,x):
 ##    f_x1 = [f[0].cofactor(x,1),f[1].cofactor(x,1)]
