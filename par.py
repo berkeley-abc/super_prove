@@ -2873,7 +2873,7 @@ def check_sat(t=2001):
     abc('orpos')
     J = combs+slps
     mtds = sublist(methods,J)
-    print mtds
+##    print mtds
     F = create_funcs(J,t)
     (m,result) = fork(F,mtds) #FORK here
     print result
@@ -3690,7 +3690,7 @@ def run_par_simplify():
 ##    J = J + bestintrps
     funcs = create_funcs(J,t)+ funcs #important that pre_simp goes last
     mtds =sublist(methods,J) + ['PRE_SIMP']
-    print mtds
+##    print mtds
     i,result = fork_last(funcs,mtds)
     status = get_status()
     if result < 3:
@@ -5340,7 +5340,7 @@ def scorr_T(t=10000):
     funcs = funcs + [eval('(pyabc_split.defer(abc)("&get;&lcorr;&put"))')]
 ##    funcs = create_funcs(slps,t)+funcs
     mtds = sublist(methods,slps) + ['scorr2','&scorr','&scorr0','&lcorr']
-    print mtds
+##    print mtds
     best = n_ands()
     abc('w %s_best_T.aig'%f_name)
     name1 = '%s_sc1.aig'%f_name
@@ -7178,7 +7178,7 @@ def bmc_par_jmps(t=2001,s=0,j=1,c=500,d=0):
         s = s0+2*i
         mtds = mtds + ['bmc_jump(%d)'%(s)]
         funcs = funcs + [eval('(pyabc_split.defer(bmc_j)(t,s,j,c,d))')]
-    print mtds
+##    print mtds
     mtd,res = fork(funcs,mtds)
     print res
     return [res[0],mtd]
@@ -7190,7 +7190,7 @@ def par_bss(t,s):
 ##    funcs = funcs + [eval('(pyabc_split.defer(sp)(2,t,False))')]
     mtds = ['sleep','bmcjmps','simple','superprove']
     mtds = mtds[:3]
-    print mtds
+##    print mtds
     i,res = fork(funcs,mtds) #all these should be returning 'SAT', 'UNSAT'...
     print mtds[i],res
     return res
@@ -7890,7 +7890,7 @@ def fork_last(funcs,mtds):
 ##                print hist
             t = int(time.time()-y)
             m = i
-            print res
+##            print res
             if not (res == 'UNSAT' or  res[0] == Unsat):
                 print '%s: UNDECIDED in %d sec.'%(mtds[i],t)
                 res = Undecided
@@ -8868,7 +8868,7 @@ def abstracta(if_bip=True):
     funcs = funcs + create_funcs(J,1000)
     mtds = mtds + ['monitor_and_prove'] + sublist(methods,J)
     print 'methods = ',
-    print mtds
+##    print mtds
     vta_term_by_time=0
     for i,res in pyabc_split.abc_split_all(funcs):
 ##        print i,res
