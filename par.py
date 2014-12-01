@@ -1738,17 +1738,21 @@ def initial_speculate(sec_opt='',t=0):
         print size_0
         
         srms = [] #filter out if too many latches, or not enough new POs or if 2 srms are equal
+    # can spend a lot of time when all 3 have no cex's and are hard.
+    # Need only do one.
+    # All 3 may seem equally good in terms of flops. 0 has more POs so more to prove, but
+    # also more reduction maybe. Note no_eff_pos can be smaller than initial so use POs
         print n_latch_init
         print size_f
         print size_g
         print size_0
-        if size_f[4] > n_pos_before + 2 and size_f[2] <= .9*n_latch_init:
+        if size_f[1] > n_pos_before + 2 and size_f[2] <= .9*n_latch_init:
             srms.append('f')
-        if (not size_f == size_g) or srms == []:
-            if size_g[4] > n_pos_before + 2 and size_g[2] <= .9*n_latch_init:
+        if ( size_f[2] >= size_g[2]+1) or srms == []:
+            if size_g[1] > n_pos_before + 2 and size_g[2] <= .9*n_latch_init:
                 srms.append('g')
-        if not (size_g == size_0 and 'g' in srms) or not (size_f == size_0 and 'f' in srms):
-            if size_0[4] > n_pos_before + 2 and size_0[2] <= .9*n_latch_init:
+        if (size_g[2]>= size_0[2] + 1 and 'g' in srms) or  (size_f[2] >= size_0[2] + 2 and 'f' in srms):
+            if size_0[1] > n_pos_before + 2 and size_0[2] <= .9*n_latch_init:
                 srms.append('')
         
         if srms == []:
@@ -5328,12 +5332,15 @@ def scorr_T(t=10000):
     if scorr_T_done:
         return
     scorr_T_done = 1
-    print 'Trying scorr_T (scorr -C 2, &scorr, &scorr -C 0)'
-    funcs = [eval('(pyabc_split.defer(abc)("scorr -C 2"))')]
+    print 'Trying scorr_T (scorr -C 2, &scorr, &scorr -C 0, &lcorr) for %d sec'%t
+    funcs = [eval('(pyabc_split.defer(sleep)(t))')]
+    funcs = funcs + [eval('(pyabc_split.defer(abc)("scorr -C 2"))')]
     funcs = funcs + [eval('(pyabc_split.defer(abc)("&get;&scorr;&put"))')]
     funcs = funcs + [eval('(pyabc_split.defer(abc)("&get;&scorr -C 0;&put"))')]
-    funcs = create_funcs(slps,t)+funcs
-    mtds = sublist(methods,slps) + ['scorr2','&scorr','&scorr0']
+    funcs = funcs + [eval('(pyabc_split.defer(abc)("&get;&lcorr;&put"))')]
+##    funcs = create_funcs(slps,t)+funcs
+    mtds = sublist(methods,slps) + ['scorr2','&scorr','&scorr0','&lcorr']
+    print mtds
     best = n_ands()
     abc('w %s_best_T.aig'%f_name)
     name1 = '%s_sc1.aig'%f_name
@@ -5345,51 +5352,69 @@ def scorr_T(t=10000):
     name3 = '%s_sc3.aig'%f_name
     if os.access(name3,os.R_OK):
         os.remove(name3)
+    name4 = '%s_sc4.aig'%f_name
+    if os.access(name4,os.R_OK):
+        os.remove(name4)
     N=m_best = 0
     for i,res in pyabc_split.abc_split_all(funcs):
-        if i == 0:
+        print N,i,res
+        if i == 0: #timeout
+            print 'scorr_T timeout'
             break
         if i == 1:
             abc('w %s_sc1.aig'%f_name)
             print 'scorr: ',
             ps()
             N=N+1
-        if N == 3 or n_latches() == 0:
-                break
-        if i == 2 or n_latches() == 0:
+        if i == 2:
             abc('w %s_sc2.aig'%f_name)
             print '&scorr: ',
             ps()
             N=N+1
-            if N == 3:
+            if N == 4:
                 break
-        if i == 3 or n_latches() == 0:
+        if i == 3:
             abc('w %s_sc3.aig'%f_name)
             print '&scorr0: ',
             ps()
             N=N+1
-            if N == 3:
+            if N == 4:
                 break
+        if i == 4:
+            abc('w %s_sc4.aig'%f_name)
+            print '&lcorr: ',
+            ps()
+            N=N+1
+        if N == 4 or n_latches() == 0:
+            break
     if os.access(name1,os.R_OK):
         abc('r %s'%name1)
-        if n_ands() < best:
+        if n_ands() < best or n_latches() == 0:
             best = n_ands()
             m_best = 1
             abc('w %s_best_T.aig'%f_name)
     if os.access(name2,os.R_OK):
         abc('r %s'%name2)
-        if n_ands() < best:
+        if n_ands() < best or n_latches() == 0:
             m_best = 2
             best = n_ands()
             abc('w %s_best_T.aig'%f_name)
     if os.access(name3,os.R_OK):
         abc('r %s'%name3)
-        if n_ands() < best:
+        if n_ands() < best or n_latches() == 0:
             m_best = 3
+            best = n_ands()
+            abc('w %s_best_T.aig'%f_name)
+    if os.access(name4,os.R_OK):
+        abc('r %s'%name4)
+        if n_ands() < best or n_latches() == 0:
+            m_best = 4
             best = n_ands()
             abc('w %s_best_T.aig'%f_name)
     smp_trace = smp_trace + ['%s'%mtds[m_best]]
     abc('r %s_best_T.aig'%f_name)
+    print '%s: '%mtds[m_best],
+    ps()
 
 def pscorr(t=2001):
     result = par_scorr(t)
@@ -7865,8 +7890,12 @@ def fork_last(funcs,mtds):
 ##                print hist
             t = int(time.time()-y)
             m = i
-            print '%s: UNDECIDED in %d sec.'%(mtds[i],t)
-            res = Undecided
+            print res
+            if not (res == 'UNSAT' or  res[0] == Unsat):
+                print '%s: UNDECIDED in %d sec.'%(mtds[i],t)
+                res = Undecided
+            else:
+                res = Unsat
             ps()                
             break
         elif mtds[i] == 'sleep':
@@ -9169,7 +9198,7 @@ def monitor_and_prove():
         J = modify_methods(J,1)
         funcs = funcs + create_funcs(J,t) 
         mtds = ['read_and_sleep'] + sublist(methods,J)
-##        print 'methods = %s'%mtds
+        print 'methods = %s'%mtds
         for i,res in pyabc_split.abc_split_all(funcs):
 ##            print 'Mon. & Pr.: ,
 ##            print i,res
