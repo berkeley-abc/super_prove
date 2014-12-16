@@ -3476,6 +3476,8 @@ def scorr_constr():
     """Extracts implicit constraints and uses them in signal correspondence
     Constraints that are found are folded back when done"""
     global aigs
+    if n_latches() == 0:
+        return Undecided_no_reduction
     na = max(1,n_ands())
     n_pos_before = n_pos()
     if ((na > 40000) or n_pos()>1):
