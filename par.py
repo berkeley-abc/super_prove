@@ -1,3 +1,4 @@
+
 from pyabc import *
 import pyabc_split
 import redirect
@@ -3031,7 +3032,8 @@ def pre_simp(n=0,N=0):
         if (n == 0 and (not '_smp' in f_name) or '_cone' in f_name):
             best_fwrd_min([10,11])
             ps()
-            status = try_scorr_constr()
+            if n_latches() > 0:
+                status = try_scorr_constr()
         if ((n_ands() > 0) or (n_latches()>0)):
             res = a_trim()
 ##            print hist
@@ -4003,6 +4005,7 @@ def restrict(lst,v=0):
     #this will not remove any const-(~v) POs
     N = n_pos()
     lst_plus = lst + [N]
+    print lst_plus
     r_lst = gaps(lst_plus) #finds POs not in lst
     if len(r_lst) == N:
         return
@@ -4961,6 +4964,7 @@ def PO_results(L):
         # in these cases stored files would be same as original
         return res
     abc('r %s.aig'%ff_name)
+    assert n_pos() > max(UD+U+S), 'mismatch in # POs'
     #NOTICE - if there were initially const_1 POs, they are handled correctly
     if not UD == []:
         remove(U+S,1) # we do it this way to preserve constraints
@@ -7388,45 +7392,67 @@ def bmc3x(t=20,start=0,f=1):
     set_initial(0)
     return POs,D
 
-def chain_cycles_pos(t=40):
+def chain_cycles_pos(t=40,restart=1):
     """ builds a list of [cycles to next bad state,pos] """
     itime = time.time()
-##    abc('w %s_hit.aig'%init_initial_f_name)
-    IDs = range(n_pos())
-##    cycle = 0
-    first = 1
-    po_hits = []
+    reinit = True
+    poh_chain = []
+    pos_hit = []
+    po_summary = []
+    poh_tot = 0
+    dmin = -1
+    POs_left = range(n_pos())
+    abc('w %s_init.aig'%f_name) #this is the aig with the original initial state.
     while True:
         #find distance to closest bad state
-        #warning Min D nd dmin differ by 1 - min(D) = dmin-1
-        abc('bmc3 -T %d'%t)
-        dmin = cex_frame()
-##        print dmin,
         if dmin == -1:
-            break
-##        cycle += dmin
-        if not first: #make sure have removed all local PO hits
-            assert dmin >= 1,'dmin = %d'%dmin
-        else:
-            first = 0
-        abc('init -c;zero') #initialize to bad state
-        poh,D = bmc3x(40,0,1) # get all hit POs in 1 frame
-        #D is not used here
-        assert not len(poh) == 0,'len(poh) = %d'%len(poh)
-##        print [dmin,len(poh)],
-        idpos = keep_sub(IDs,poh) # same as IDs[pos]
-##        po_hits.append([dmin,len(poh),idpos])
-        po_hits.append([dmin,len(poh)])
-        IDs = remove_sub(IDs,poh) # IDs[~poh]
-        abc('scl')
-        if len(poh) == n_pos(): #can't remove all POs.
-            break
-        remove(poh,1)
-##        xa('bmc3 -T 5 -F 1')
-##        assert cex_frame() == -1
-##    t,b,p = ((time.time()-itime),len(po_hits),po_hits[len(po_hits)-1][0],sum_col(po_hits,1))
+            abc('bmc3 -T %d'%t)
+            dmin = cex_frame()
+            if dmin == -1:
+                print "\ncan't continue present chain"
+                if pos_hit == 0:
+                    break
+        if dmin == -1:
+            if restart: # restart at the initial state with hit POs removed
+                ps()
+                run_command('r %s_init.aig'%f_name)
+                POs_left = range(n_pos()) #global PO IDs
+##                print poh_chain
+                pos_hit = pos_hit + keep_sub(POs_left,poh_chain)
+                print '\ntotal POs hit so far: %d'%len(pos_hit)
+##                print pos_hit
+                POs_left = remove_sub(POs_left,pos_hit)
+                assert max(pos_hit) < n_pos(),'max PO is %d'%max(pos_hit)
+                remove(pos_hit,1) #pos_hit are global id's of POs hit so far
+                abc('scl')
+                print '\ntrying a new chain'
+                ps()
+                abc('bmc3 -T %d'%t)
+                dmin = cex_frame()
+                if dmin == -1: #can't get anything new restarting from initial aig
+                    print 'nothing new on new chain'
+                    break
+                else:
+                    print '\nstarting new chain with first depth = %d'%dmin
+                    reinit = True
+                    poh_chain = []
+            else:
+                break
+        else: #continue chain
+            abc('init -c;zero') #initialize to bad state
+            poh_new,D = bmc3x(40,0,1) # get all hit POs in 1 frame
+            poh_chain = poh_chain + keep_sub(POs_left,poh_new)
+            po_summary.append([dmin,len(poh_new),reinit]) #running summary
+            if len(poh_new) == n_pos(): #can't remove all POs.
+                print 'all POs are hit'
+                break
+            POs_left = remove_sub(POs_left,poh_new)
+            remove(poh_new,1)
+            abc('scl')
+            print [dmin, len(poh_new)],
+            dmin = -1
     print '\nchain: fname = %s, time = %.2f'%(f_name,time.time()-itime)
-    return po_hits
+    return po_summary
 
 def list_depth_pos(t=20,start=0,f=1):
     """ builds a list of [depth,#pos hit at that depth]"""
@@ -7454,16 +7480,20 @@ def list_depth_pos(t=20,start=0,f=1):
 ##    print d
     return d
 
-def run_example(t=40):
+def run_example(t=40,restart=True):
     print 'example: %s'%f_name,
     ps()
     d = list_depth_pos(t,0,10000)
-    dc = chain_cycles_pos(t)
+    if not d == []:
+        d1=[d[i][1] for i in xrange(len(d))]
+        print '\nnumber POs hit by depths = %d'%reduce(lambda x,y:x+y,d1)
+    dc = chain_cycles_pos(t,restart)
     ratio = compression_ratio(d,dc)
-    return ratio,d,dc
+    new_ratio = new_compression_ratio(d,dc)
+    return new_ratio,d,dc
 
 def compression_ratio(d,dc):
-    """ this is only approximate since d and dc may hit a dfferent # or POs"""
+    """ this is only approximate since d and dc may hit a different # or POs"""
     if not d == []:
         d0=[d[i][0] for i in xrange(len(d))]
         d1=[d[i][1] for i in xrange(len(d))]
@@ -7476,12 +7506,47 @@ def compression_ratio(d,dc):
         print 'number POs hit by chain = %d'%reduce(lambda x,y:x+y,dc1)
         dcp=[dc0[i]+dc1[i] for i in xrange(len(dc))]
         new_cycles = reduce(lambda x,y:x+y,dcp)
-        ratio = float(old_cycles)/float(new_cycles)
+        ratio = float(new_cycles)/float(old_cycles)
         print 'old_cycles = %d'%old_cycles
         print 'new_cycles = %d'%new_cycles
-        print 'compression ratio = %.2f'%ratio
+##        print 'compression ratio = %.2f'%ratio
         return ratio
     return 0
+
+
+def new_compression_ratio(d,dc):
+    """ Only compares the first N PO hits."""
+    if not d == [] and not dc == []:
+        d0=[d[i][0] for i in xrange(len(d))]
+        d1=[d[i][1] for i in xrange(len(d))]
+        po_totd = reduce(lambda x,y:x+y,d1)
+        dc0=[dc[i][0] for i in xrange(len(dc))]
+        dc1=[dc[i][1] for i in xrange(len(dc))]
+        po_totdc = reduce(lambda x,y:x+y,dc1)
+        dp=[d0[i]*d1[i] for i in xrange(len(d))]
+        d_cycles = reduce(lambda x,y:x+y,dp)
+        dcp = [dc0[i]+dc1[i] for i in xrange(len(dc))]
+        dc_cycles = reduce(lambda x,y:x+y,dcp)
+        print '\ncomparing # cycles to hit first %d POs'%min(po_totd,po_totdc)
+        if po_totd < po_totdc:
+            dc_cycles = pot = 0
+            for i in range(len(dc)):
+                dc_cycles = dc_cycles + dc0[i] + dc1[i]
+                pot = pot + dc1[i]
+                if pot > po_totd:
+                    break
+        else:
+            d_cycles = pot = 0
+            for i in range(len(d)):
+                d_cycles = d_cycles + d0[i]*d1[i]
+                pot = pot + d1[i]
+                if pot > po_totdc:
+                    break
+        ratio = float(dc_cycles)/float(d_cycles)
+        print 'new compression ratio = %.2f'%ratio
+        return ratio            
+    return 0
+
 
 def display_dict(d):
     r = d.keys()
@@ -7489,7 +7554,7 @@ def display_dict(d):
     ss = [len(d[k]) for k in r]
     print zip(r,ss)
 
-def remove_pos_list(nliat):
+def remove_pos_list(nlist):
     l = [-1]*n_pos()
     for i in range(len(l)):
         l[i]=1
