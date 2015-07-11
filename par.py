@@ -82,7 +82,7 @@ trim_allowed = True
 pord_on = False
 sec_sw = False
 sec_options = ''
-cex_list = []
+pairs = cex_list = []
 TERM = 'USL'
 ##last_gasp_time = 10000
 last_gasp_time = 500
@@ -105,7 +105,7 @@ abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
 total_spec_refine_time = 150
 ifbip = 0 # sets the abtraction method to vta or gla, If = 1 then uses ,abs
 if_no_bip = False #True sets it up so it can't use bip and reachx commands.
-abs_ratio = .5 #this controls when abstraction is too big and gives up
+abs_ratio = .6 #this controls when abstraction is too big and gives up
 #####################################
 
 ############## No bip Settings ########################
@@ -141,7 +141,7 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
            'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
-           'iprove','BMC_J2','splitprove','pdrm_exact']
+           'iprove','BMC_J2','splitprove','pdrm_exact', 'AVY']
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
@@ -149,6 +149,7 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
 #21.run_parallel, 22.INTRP_bwd, 23. Interp_m 24. REACHY 25. REACHYc 26. Rarity Sim 27. simplify
 #28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a 33. extract 34. pdr_abstract
 #35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2 39. splitprove 40. pdrm_exact
+#41. AVY
 win_list = [(0,.1),(1,.1),(2,.1),(3,.1),(4,.1),(5,-1),(6,-1),(7,.1)]
 FUNCS = ["(pyabc_split.defer(pdr)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,pdr -vt=%f'%t))",
@@ -204,6 +205,7 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(bmc_j2)(t))",
          "(pyabc_split.defer(splitprove)(t))",
          "(pyabc_split.defer(pdrm_exact)(t))",
+         "(pyabc_split.defer(avy)(t))",
 ##         "(pyabc_split.defer(bmc_par_jmps)(t))"
           ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
@@ -222,11 +224,13 @@ exactbmcs = [9,2,31]
 exbmcs = [2,9,31]
 bmcs = [9,30,31,2,38]
 bmcs1 = [9]
-allintrps = [23,1,22]
-bestintrps = [23]
+#added AVY as a new ubterpolation method
+allintrps = [41,23,1,22]
+bestintrps = [41,23]
 ##intrps = [23,1]
-intrps = [23,1] #putting ,imc-sofa first for now to test
-intrps = [23] #rkb
+intrps = [41,23,1] #putting ,imc-sofa first for now to test
+intrps = [41,23] #rkb
+# done adding AVY
 allsims = [26,3]
 sims = [26] 
 allslps = [18]
@@ -234,7 +238,6 @@ slps = [18]
 pre = [5]
 combs = [36,37,39]
 
-JVprove = [7,23,24]
 JV = pdrs+intrps+bmcs+sims #sets what is run in parallel '17. verify' above
 JP = JV + [27] # sets what is run in  '21. run_parallel' above 27 simplify should be last because it can't time out.
 #_____________________________________________________________
@@ -251,12 +254,12 @@ def initialize():
     global init_time, last_cex, last_winner, trim_allowed, t_init, sec_options, sec_sw
     global n_pos_before, n_pos_proved, last_cx, pord_on, temp_dec, abs_time, gabs, gla,m_trace
     global smp_trace,hist,init_initial_f_name, skip_spec, t_iter_start,last_simp, final_all, scorr_T_done
-    global last_gap, last_gasp_time, max_pos
+    global last_gap, last_gasp_time, max_pos,pairs
     xfi = x_factor = 1  #set this to higher for larger problems or if you want to try harder during abstraction
     max_bmc = -1
     last_time = 0
 ##    last_gasp_time = 2001 #set to conform to hwmcc12
-    last_gasp_time = 501 #set to conform to hwmcc12
+    last_gasp_time = 901 #set to conform to hwmcc12
     j_last = 0
     seed = 113
     init_simp = 1
@@ -274,10 +277,13 @@ def initialize():
     cex_list = []
     n_pos_before = n_pos()
     n_pos_proved = 0
-    if n_ands() > 100000:
-        abs_time = 300
-    else:
-        abs_time = 150 #timeout for abstraction
+##    if n_ands() > 100000:
+##        abs_time = 300
+##    else:
+##        abs_time = 150 #timeout for abstraction
+    abs_time = 100000 #let size terminate this.
+    abs_time = 500
+    abs_time = 150
     abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
     total_spec_refine_time = 150 # timeout for speculation refinement
     abs_ratio = .5 
@@ -291,6 +297,7 @@ def initialize():
     scorr_T_done = 0
     last_gap = 0
     max_pos = 1000
+    pairs = []
 ##    abs_time = 100
 ##    gabs = False
 ##    abs_time = 500
@@ -446,7 +453,7 @@ def set_engines(N=0):
         if if_no_bip:
             allpdrs = pdrs = [7,19] #pdrm pdrmm
         bmcs = [9,30] #bmc3 bmc3 -S
-        intrps = [23] #unterp_m
+        intrps = [41,23] #unterp_m
         sims = [26] #Rarity_sim
         slps = [18] #sleep
 # 0.PDR, 1.INTERPOLATION, 2.BMC, 3.SIMULATION,
@@ -463,12 +470,12 @@ def set_engines(N=0):
     elif N <= 8: #used for HWMCC
         reachs = [24] #REACHY
         allpdrs = pdrs = [7,34,14] #PDRM pdr_abstract PDR_seed
-        intrps = [23,1] #Interp_m
-        intrps = [23] #rkb
+        intrps = [41,23,1] #Interp_m
+        intrps = [41,23] #rkb
         allbmcs = bmcs = [9,30,2] #BMC3 bmc3 -S bmc_j bmc2
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
-            intrps = allintrps = [23] #Interp_m
+            intrps = allintrps = [41,23] #Interp_m
             bmcs = allbmcs = [9,30,38]
         sims = [26] #Rarity_Sim
         slps = [18] #sleep
@@ -476,12 +483,12 @@ def set_engines(N=0):
         reachs = [24] #REACHY REACHX
         pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
         pdrs = [7,34,14,0]
-        intrps = [23,1] #Interp_m INTERPOLATION
-        intrps = [23] #rkb
+        intrps = [41,23,1] #Interp_m INTERPOLATION
+        intrps = [41,23] #rkb
         bmcs = allbmcs   #allbmcs = [9,30,2,31,38]
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
-            intrps = allintrps = [23] #Interp_m
+            intrps = allintrps = [41,23] #Interp_m
             reachs = [24] #REACHY
             bmcs = [9,30,38] #BMC3 bmc3 -S 
         sims = [26] #Rarity_Sim
@@ -976,7 +983,7 @@ def simplify(M=0,N=0):
         ps()
     n = n_ands()
 ##    if (30000 < n  and n <= 40000):
-    if (60000 < n  and n <= 70000):
+    if (30000 < n  and n <= 70000):
         if not p_40:
             smp_trace = smp_trace + ['&dc2;dretime;&lcorr;&dc2;dretime;&scorr;&fraig;&dc2;dretime']
             abc("&get;&dc2;&put;dretime;&get;&lcorr;&dc2;&put;dretime;&get;&scorr;&fraig;&dc2;&put;dretime")
@@ -990,7 +997,7 @@ def simplify(M=0,N=0):
             ps()
     n = n_ands()
 ##    if n <= 60000:
-    if n <= 70000:
+    if n <= 35000:
         smp_trace = smp_trace + ['scl -m;drw;dretime;lcorr;drw;dretime']
         abc('scl -m;drw;dretime;lcorr;drw;dretime')
         ps()
@@ -2518,6 +2525,8 @@ def simple(t=10000,no_simp=0,check_trace=False):
 ##    J = slps+sims+bmcs+pdrs+intrps+pre
     J = slps+sims+allbmcs+allpdrs+intrps
     J = modify_methods(J)
+    mtds = sublist(methods,J)
+    print mtds
     result = verify(J,t)
     if is_sat():
         if check_trace:
@@ -2537,7 +2546,7 @@ def simple_bip(t=1000):
     if result > Unsat:
         write_file('smp')
         result = verify(slps+[0,14,1,2,30],t)
-    print 'Time for simple_bip = %0.2f'%(time.time()-y)
+    print 'simple_bip = %0.2f'%(time.time()-y)
     return RESULT[result] 
 
 def check_same_gsrm(f):
@@ -3001,6 +3010,7 @@ def pre_simp(n=0,N=0):
     global smp_trace, aigs, last_simp
     chk_sat = 0
     smp_trace = []
+    tried_constr = False
     while True:
         if n_latches() == 0:
             print 'Circuit is combinational'
@@ -3010,6 +3020,9 @@ def pre_simp(n=0,N=0):
             break
         ttime = time.time()
         set_globals()
+        if n_ands() < 18000:
+            tried_constr = True
+            try_scorr_constr()
         smp_trace = smp_trace + ['&scl']
         abc('&get; &scl; &put')
         print 'after &scl: ',
@@ -3018,6 +3031,9 @@ def pre_simp(n=0,N=0):
 ##            print '# latches = 0'
             chk_sat = 1
             break
+        if n_ands() < 18000 and not tried_constr:
+            tried_constr = True
+            try_scorr_constr()
         if (n_ands() > 200000 or n_latches() > 50000 or n_pis() > 40000):
             smp_trace = smp_trace + ['scorr_T']
             scorr_T(50)
@@ -3032,7 +3048,7 @@ def pre_simp(n=0,N=0):
         if (n == 0 and (not '_smp' in f_name) or '_cone' in f_name):
             best_fwrd_min([10,11])
             ps()
-            if n_latches() > 0:
+            if n_latches() > 0 and not tried_constr:
                 status = try_scorr_constr()
         if ((n_ands() > 0) or (n_latches()>0)):
             res = a_trim()
@@ -3487,24 +3503,26 @@ def scorr_constr():
     abc('w %s_savetemp.aig'%f_name)
     na = max(1,n_ands())
 ##    f = 1
-    f = 18000/na  #**** THIS can create a bug 10/15/11. see below
+    f = 40000/na  #**** THIS can create a bug 10/15/11. see below
     f = min(f,4)
-    f = max(1,f)
-    print 'Looking for constraints - ',
+    f = max(2,f)
+    print 'Looking for constraints with -F %d - '%f,
     if n_ands() > 18000:
         cmd = 'unfold -s -F 2'
     else:
         cmd = 'unfold -F %d -C 5000'%f
+    print cmd
     abc(cmd)
+    ps()
     if n_pos() == n_pos_before:
         print 'none found'
         return Undecided_no_reduction
     if (n_ands() > na): #no constraints found
-        abc('r %s_savetemp.aig'%f_name)
+        abc('r/rf %s_savetemp.aig'%f_name)
         return Undecided_no_reduction
     na = max(1,n_ands())
     f = 1 #put here until bug is fixed.
-    print 'found %d constraints'%((n_pos() - n_pos_before))
+    print 'Found %d constraints'%((n_pos() - n_pos_before))
     abc('scorr -c -F %d'%f)
     abc('fold')
     res = a_trim()
@@ -3575,7 +3593,9 @@ def prove(a=0,abs_tried = False):
             result = quick_simp() #does not write 'smp' file
 ##            print result
         else :
+            print 'entering prove_part_1'
             result = prove_part_1() #do full simplification here
+            print 'prove_part_1 is done'
         if ((result == 'SAT') or (result == 'UNSAT')):
             return result
 ##    if n_latches() == 0:
@@ -3587,6 +3607,7 @@ def prove(a=0,abs_tried = False):
     abs_found_cex_before_spec = spec_found_cex_before_abs = False
 ##    First phase
     if spec_first:
+        print 'entering prove_part_3'
         result = prove_part_3() #speculation done here first
         if result == 'UNDECIDED' and abs_tried and n_pos() <= 2:
             add_trace('de_speculate')
@@ -3595,6 +3616,7 @@ def prove(a=0,abs_tried = False):
             return result
     else:
         abs_tried = True
+        print 'entering prove_part_2'
         result = prove_part_2() #abstraction done here first
     if ((result == 'SAT') or (result == 'UNSAT') or a == 3):
         return result
@@ -3603,12 +3625,14 @@ def prove(a=0,abs_tried = False):
         t_init = 2
         if not abs_tried:
             abs_tried = True
+            print 'entering prove_part_2'
             result = prove_part_2() #abstraction done here second
             if result == 'SAT':
                 abs_found_cex_after_spec = True
         else:
             return result
     else:
+        print 'entering prove_part_3'
         result = prove_part_3()  #speculation done here second
         if result == 'SAT':
             if '_abs' in f_name:
@@ -3694,7 +3718,7 @@ def run_par_simplify():
 ##    J = J + bestintrps
     funcs = create_funcs(J,t)+ funcs #important that pre_simp goes last
     mtds =sublist(methods,J) + ['PRE_SIMP']
-##    print mtds
+    print mtds
     i,result = fork_last(funcs,mtds)
     status = get_status()
     if result < 3:
@@ -6079,7 +6103,8 @@ def x_ops(ops,L,t):
     return result
 
 def iso(n=0):
-    if n_ands() > 500000:
+    if n_ands() > 1000000 and not n_latches == 0:
+        print 'circuit too large - over 1000000 ANDS'
         return False
     if n_pos() < 2:
         print 'no more than 1 output'
@@ -6091,7 +6116,7 @@ def iso(n=0):
             print 'no reduction'
             return False
     else:
-        run_command('&get;&iso;iso;&put')
+        run_command('&get;&iso;&put')
         if n_pos() == npos:
             print 'no reduction'
             return False
@@ -6211,8 +6236,9 @@ def modify_methods(J,dec=0):
             if L < 70 and not 4 in reachs:
                 reachi = reachs #[4] = reachx
             J = reachi+J # add all reach methods
-            if len(J)>npr:
-                J = remove_intrps(J) #removes only if len(J)<n_processes
+##RKB: temp to test out avy            
+##            if len(J)>npr:
+##                J = remove_intrps(J) #removes only if len(J)<n_processes
     if len(J)< npr: #if not using all processors, add in pdrs
         for j in range(len(allpdrs)):
             if allpdrs[j] in J: #leave it in
@@ -6257,7 +6283,8 @@ def BMC_VER_result(t=0):
 ####        t = max(2*last_verify_time,last_gasp_time)
 ##        t = last_gasp_time
 ##        #each time a new time-out is set t at least 1000 sec.
-    t = last_gasp_time
+    if t == 0:
+        t = last_gasp_time
     print 'Verify time set to %d'%t
     J = slps + allpdrs2 + bmcs + intrps + sims
     last_name = seq_name(f_name).pop()
@@ -6369,19 +6396,19 @@ def prove_j_assuming_rest(j):
     print '^^^ f_name restored as %s'%f_name
     abc('r %s_temprest.aig'%f_name)
 
-def remove_iso(L):
-    global n_pos_proved, n_pos_before
-    lst = []
-    for j in range(len(L)):
-        ll = L[j][1:]
-        if len(ll) == 0:
-            continue
-        else:
-            lst = lst + ll
-    zero(lst)
-    n_pos_proved = n_pos_proved + count_less(lst,n_pos_before - n_pos_proved)
-    print 'The number of POs removed by iso was %d'%len(lst)
-    l=remove_const_v_pos(0) #can an original PO be zero?
+##def remove(L):
+##    global n_pos_proved, n_pos_before
+##    lst = []
+##    for j in range(len(L)):
+##        ll = L[j][1:]
+##        if len(ll) == 0:
+##            continue
+##        else:
+##            lst = lst + ll
+##    zero(lst)
+##    n_pos_proved = n_pos_proved + count_less(lst,n_pos_before - n_pos_proved)
+##    print 'The number of POs removed by iso was %d'%len(lst)
+##    l=remove_const_v_pos(0) #can an original PO be zero?
 
 def prove_all_iso():
     """Tries to prove output k by isomorphism. Gets number of iso-eq_classes as an array of lists.
@@ -7254,6 +7281,17 @@ def pdr(t=2001):
         print 'pdr returned %s'%str(gs)
     return RESULT[get_status()]
 
+def avy(t=2001):
+##    abc('&get; avy --verbose=3 --min-suffix=1 --sat-simp=0 --itp-simp=0\
+##    --shallow-push=1 --reset-cover=1 --glucose --glucose-itp --opt-bmc=1')
+    abc('&get; avy --reset-cover=1 --itp=0 --min-suffix=yes '
+                '-a --tr0 --shallow-push=1 --stutter=0')
+##    abc('&get; avy')
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'avy returned %s'%str(gs)
+    return RESULT[get_status()]
+
 def pdr0(t=2001):
     abc('&get; ,pdr -rlim=100 -vt=%f'%t)
     return RESULT[get_status()]
@@ -7451,7 +7489,7 @@ def chain_cycles_pos(t=40,restart=1):
             abc('scl')
             print [dmin, len(poh_new)],
             dmin = -1
-    print '\nchain: fname = %s, time = %.2f'%(f_name,time.time()-itime)
+    print '\nchain: fname = %s, time = %.2f'%(f_name,time.tFime()-itime)
     return po_summary
 
 def list_depth_pos(t=20,start=0,f=1):
@@ -8273,7 +8311,7 @@ def get_lib():
     run_command('read_genlib vsclib013.genlib')
 
 def map_a_iter():
-    run_command('map -a;ps')
+    run_command('map -a')
     mm = n_area()
     abc('write_blif %s_min_map.blif'%f_name)
     while True:
@@ -8306,30 +8344,258 @@ def sop_balance(k=4):
         abc('st;dch; if -C %d -K %d;ps'%(10,kmax))
         print nl(),
 
-def speedup(k=4):
-    run_command('speedup;if -K %d'%k)
+def speedup(k=6):
+    run_command('st;&get;&syn2;&if -K %d -C 16 -g;&ps;&synch2;&if -K %d -C 16;&ps;&mfs;&ps;&put'%(k,k))
     print nl()
 
-def speed_tradeoff(k=4):
+def merge_eqs(eql,eqh):
+    res = []
+    for k in range(len(eqh)):
+        resk = []
+        lh = eqh[k]
+        for i in range(len(lh)):
+            resk = resk + eql[lh[i]]
+##            print resk
+        res = res + [resk]
+##    print [len(res[i]) for i in range(len(res))]
+    return res
+
+def get_supp(cl=[]):
+    """ gets the union of the supports of a single isomorphic class."""
+    sup_cl = []
+    npi = n_init_pis #pis are CIs which are PIs,FF
+    for i in range(len(cl)):
+        #i is a flop number = #po + #FF[i]
+        supi = co_supp(cl[i])
+        supi = [supi[j]-npi for j in range(len(supi))] #shift so flops start at 0
+        sup_cl= sup_cl + supi
+    sup_cl.sort()   # sorted so can tell easily tell number of times a signal is repeated 
+    return sup_cl
+
+def get_class_supp(eq=[]):
+    """ e is a set of isomorphic classes. Computes the support of each iso class.
+    Repeated supports indicate that common signals appear in the supports of a
+    class. input numbering is PIs first, then flops.
+    """ 
+    sg = []
+    for i in range(len(eq)):
+        eis = get_supp(eq[i]) #get the support of the ith iso class. This includes
+            #PIs whic have negative numbers
+        if eis == None:
+            print i,eq[i],eis
+        sg.append(eis)
+    return sg
+
+def fi_groups(sg=[],eq=[]):
+    """ sg is the supps of each iso class. eq are the iso classes
+    This code converts the inputs into iso-class inputs, but leaves the PIs (negative #)
+    untouched. Note that each PO is part of some iso group. """
+    gpf = get_gpf(eq) #assigns group number to each PO and flop
+    fi = []
+    for j in range(len(eq)):
+        sgj = sg[j] #supp of group j
+        mask = [sgj[i] > -1 for i in range(len(sgj))]
+        ind = len(mask)+1
+        if True in mask:
+            ind = mask.index(True)#finds the first flop
+        inps = sgj[:ind] #inputs
+        inps = list(set(inps))
+        flops = sgj[ind:] #flops of supports of iso-group j
+        sgm = [gpf[flops[i]] for i in range(len(flops))] #map into flop groups
+##        sgm.sort()
+        sgm = list(set(sgm)) #get rid of duplicates and sort
+        sgm = inps+sgm
+##        sgm.sort()
+        fi.append(sgm)
+    return fi
+
+def check_fifo(fi,fo):
+    for i in range(len(fi)):
+        fii = fi[i]
+        for j in fii: # j->i and j not a PI
+            if j > -1:
+                assert i in fo[j], 'fanin discrepancy (%d,%d)'%(j,i) #j is a fanin of i
+            # j->i
+    for i in range(len(fo)):
+        foi = fo[i]
+        for j in foi: #i->j
+            assert i in fi[j], 'fanout discrepancy (%d,%d)'%(i,j) #j is a fanin of i
+            #i->j
+
+def get_gpf(eq = []):
+    """ assigns group number to each PO and flop"""
+    gpf = [-1 for i in range(n_init_pos+n_init_latches)] #initialize to all -1
+    for j in range(len(eq)):
+        eqj = eq[j]  #jth iso class
+        for i in range(len(eqj)):
+            gpf[eqj[i]] = j
+    assert not -1 in gpf, '-1 in gpf'
+    return gpf
+
+def fo_groups(fi=[]):
+    """ get the fanout groups from the fanin groups"""
+    fo = [[] for i in range(len(fi))]
+    for i in range(len(fi)):
+        fii = fi[i] #ith fanin group
+        for j in range(len(fii)):
+            if fii[j]> -1: # no a PI
+                fo[fii[j]].append(i) # i is a fanout of fii[j]
+    return fo
+        
+def print_gp(fo,fi=[]):
+    """ prints classes with >1 members"""
+    if fi == []:
+        for i in range(len(fo)):
+            if len(fo[i]) > 1:
+                print '\n%d: '%i,fo[i]
+    else:
+        for i in range(len(fo)):
+            if len(fo[i]) >1:
+                print '\n%d: '%i,fi[i]
+                print fo[i]
+
+def count_rep(z):
+    """ x is a sorted list with repeats. returns a list of [value, count]
+    where count is the number of times value is repeated in the list"""
+    res = []
+    s = 0
+    for i in range(len(z)-1):
+        if not z[i] == z[i+1]:
+            v = [z[i],s+1]
+            res.append(v)
+            s = 0
+        else:
+            s=s+1
+    return res
+
+""" remember to have Alan create a command that makes each flop input a
+PO. We want to try to prove some flop inputs are equal. need to miter pairs
+together and try to properties them as properties. Use iso, scorr? Or given
+a pair of flop inputs, a command makes a miter of them. Then we try to prove
+them equivalent by superprove.
+
+"""            
+
+def get_iso_classes():
+    global n_init_pis, n_init_latches,n_init_pos
+    n_init_pis = n_pis()
+    n_init_pos = n_pos()
+    if n_latches() > 0:
+        abc('scl')
+        if n_ands() == 0:
+            print 'nil circuit after scl'
+            return 'nil'
+##    dc2_iter()
+        n_init_latches = n_latches()
+    if n_latches() > 0:
+        abc('comb')
+    abc('w %s_comb.aig'%f_name)
+    dc2_iter()
+##    syn2_iter()
+##    abc('dc2')
+##    abc('syn2') ??
+    ps()
+    if not iso():
+        return 'none found'
+    eq = eq_classes()
+    while True:
+##        dc2_iter()
+##        abc('dc2')
+        abc('&get;&syn2;&put')
+##        abc('fraig')
+        if iso():
+            eq = merge_eqs(eq,eq_classes())
+            continue
+        else:
+            print 'fraiging'
+            abc('&get;&fraig;&syn2;&put')
+            if not iso():
+                break
+            eq = merge_eqs(eq,eq_classes())
+            
+    print 'iso class sizes: ',
+    print [len(eq[i]) for i in range(len(eq))]
+    abc('r %s_comb.aig'%f_name)
+    return eq
+        
+def find_common_fo(fi,fo):
+    res = []
+    for i in range(len(fo)):
+        foi = fo[i]
+        for j in range(len(fo))[i+1:]:
+            if fo[j] == foi:
+                res.append([i,j])
+    return res
+
+def factor_nsf():
+    abc('short_name')
+    dc2_iter()
+    abc('comb')
+    while True:
+        dc2_iter()
+        if not iso():
+            break
+    ps()
+    abc('&get')
+    for k in range(n_pos()): 
+        run_command('&put;cone -O %d;dc2'%k)
+        if n_ands() > 15:
+##            print n_ands()
+            continue
+        print '\n\n%d.  '%k ,
+        run_command('clp;sop;pf')
+        
+
+
+def speed2_tradeoff(k=6,dec=1):
     print nl(),
-    best = n_nodes()
+    abc('write_blif %s_best_speed.blif'%f_name)
+    L_best = n_levels()
+    A_best = n_nodes()
+    abc('st;&get')
+    while True:
+        run_command('&syn2; &if -K 6 -C 16 -g;&synch2;&if -K 6 -C 16;&mfs;&put')
+##        abc('speedup;if -D %d -F 2 -K %d -C 11'%(L,k))
+        if n_levels() < L_best:
+            L_best = n_levels()
+            A_best = n_nodes()
+            run_command('write_blif %s_best_speed.blif'%f_name)
+            print nl(),
+        elif n_levels() == L_best:
+            if n_nodes() < A_best:
+                run_command('write_blif %s_best_speed.blif'%f_name)
+            print nl()
+            break
+        else: # levels went up
+            print '\nNumber of levels went up: ',
+            print nl()
+            break
+        continue
+    abc('r %s_best_speed.blif'%f_name)
+    print nl()
+
+def speed_tradeoff(k=6,dec=1):
+    print nl(),
+    best = n_levels()
     abc('write_blif %s_bestsp.blif'%f_name)
     L_init = n_levels()
     while True:
         L_old = n_levels()
-        L = L_old -1
+        L = L_old -dec
         abc('speedup;if -D %d -F 2 -K %d -C 11'%(L,k))
-        if n_nodes() < best:
-            best = n_nodes()
+        if n_levels() < best:
+            best = n_levels()
             abc('write_blif %s_bestsp.blif'%f_name)
         if n_levels() == L_old:
             break
         print nl(),
         continue
     abc('r %s_bestsp.blif'%f_name)
+    print nl()
     return
 
 def area_tradeoff(k=4):
+    """ try to get better area by relaxing delay"""
     print nl(),
     best = n_nodes()
     abc('write_blif %s_bestsp.blif'%f_name)
@@ -8338,45 +8604,74 @@ def area_tradeoff(k=4):
         L_old = n_levels()
         L = L_old +1
         n_nodes_old = n_nodes()
-        abc('speedup;if -a -D %d -F 2 -K %d -C 11'%(L,k))
+        abc('/psspeedup;if -a -D %d -F 2 -K %d -C 11'%(L,k))
         if n_nodes() < best:
             best = n_nodes()
             abc('write_blif %s_bestsp.blif'%f_name)
-##        if n_levels() == L_old:
-        if n_nodes == n_nodes_old:
-            break
+        if n_levels() >= L_old:
+            if n_nodes >= n_nodes_old:
+                print nl()
+                break
         print nl(),
         continue
     abc('r %s_bestar.blif'%f_name)
     return
 
-
-def map_lut_dch(k=4):
-    '''minimizes area '''
-    abc('st; dch; if -a  -F 2 -K %d -C 11; mfs2 -a -L 50 ; lutpack -L 50'%k)
-    
-def map_lut_dch_iter(k=8):
-##    print 'entering map_lut_dch_iter with k = %d'%k
+def area_tradeoff2(k=6):
+    """ try to get better area by relaxing delay"""
+    print nl(),
     best = n_nodes()
-    abc('write_blif %s_best.blif'%f_name)
-##    abc('st;dch;if -a -K %d -F 2 -C 11; mfs -a -L 1000; lutpack -L 1000'%k)
-##    if n_nodes() < best:
-##        abc('write_blif %s_best.blif'%f_name)
-##        best = n_nodes()
+    abc('write_blif %s_bestar.blif'%f_name)
+    L_init = n_levels()
+    while True:
+        L_old = n_levels()
+        L = L_old +2
+##        n_nodes_old = n_nodes()
+        abc('&get;&synch2; &if -f -D %d -F 1 -K %d -C 11;&put'%(L,k))
+        print nl()
+        if n_nodes() < best:
+            best = n_nodes()
+            abc('write_blif %s_bestar.blif'%f_name)
+##        if n_levels() >= L_old:
+        else:
+            abc('read_blif %s_bestar.blif'%f_name)
+            break
 ##        print nl(),
-##    else:
-##        abc('r %s_best.blif'%f_name)
-##    best = n_nodes()
-##    abc('write_blif %s_best.blif'%f_name)
-##    print 'best = %d'%best
+        continue
+    abc('r %s_bestar.blif'%f_name)
+    print nl()
+    return
+
+
+def map_lut_dch(k=6,synch=1):
+    '''minimizes area '''
+    if synch:
+        abc('st; &get;&synch2;&if -a -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
+##        abc('st; &get;&synch2;&lf -am -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
+    else:
+        abc('st; dch;ps; if -a  -F 2 -K %d -C 11;ps; mfs2 -a  ;ps; lutpack ;ps'%k)
+##    abc('st; dch;ps; if  -F 2 -K %d -C 11;ps; mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
+##    abc('st; &get;&dch; &if  -a -F 2 -K %d -C 11;&put;ps; mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
+##    abc('st; dch;if -a -K %d -F 2 -A 1;mfs2 -a -L 50 ;lutpack -L 50;ps'%k)
+
+##def map_lut_dch(k=6):
+##    '''minimizes area '''
+##    abc('st; &get;&synch2;&if -a -K 6 -F 2 -C 11;&put;mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
+
+
+def if_a_iter(k=6):
+    best = n_nodes()
+    run_command('write_blif %s_best.blif'%f_name)
     n=0
     while True:
-        map_lut_dch(k)
+        abc('if -a -K %d'%k)
+##        abc('lf -am -K %d'%k)
         if n_nodes()< best:
+            assert check_blif(),'inequivalence'
             best = n_nodes()
-##            print 'best=%d'%best
             n = 0
             abc('write_blif %s_best.blif'%f_name)
+            assert check_blif(),'inequivalence'
             print nl(),
             continue
         else:
@@ -8384,6 +8679,102 @@ def map_lut_dch_iter(k=8):
             if n>2:
                 break    
     abc('r %s_best.blif'%f_name)
+
+def if_synch_iter(k=6):
+    best = n_nodes()
+    run_command('write_blif %s_best.blif'%f_name)
+    abc('st; &get;&synch2 -K %d; &if -F 2 -K %d -C 11;&put;ps'%(k,k))
+    n=0
+    while True:
+        abc('st; &get;&synch2 -K %d; &if -F 2 -K %d -C 11;&put;ps'%(k,k))
+        if n_nodes()< best:
+##            assert check_blif(),'inequivalence'
+            best = n_nodes()
+            n = 0
+            abc('write_blif %s_best.blif'%f_name)
+##            assert check_blif(),'inequivalence'
+            print nl(),
+            continue
+        else:
+            n = n+1
+            if n>2:
+                break    
+    abc('r %s_best.blif'%f_name)
+    
+def map_lut_dch_iter(k=6,synch=1,alt=0,m=2):
+    global pairs
+##    print 'entering map_lut_dch_iter with k = %d'%k
+    best = n_nodes()
+    sy=synch
+    if alt:
+        sy = not synch
+##    print best
+##    print nl()
+    run_command('write_blif %s_best.blif'%f_name)
+    n=0
+##    print nl()
+    while True:
+        if alt:
+            sy = not sy
+        map_lut_dch(k,sy)
+        if n_nodes()< best:
+            best = n_nodes()
+##            print 'best=%d'%best
+            n = 0
+            abc('write_blif %s_best.blif'%f_name)
+            print nl(),
+            if checknl(nl()):
+                print 'Repeat'
+                break
+            continue
+        else:
+##            sy = not sy
+            n = n+1
+            if n>m:
+                break    
+##    if_a_iter(k)
+    abc('r %s_best.blif'%f_name)
+##    if n_nodes() >= best:
+##        abc('r %s_best.blif'%f_name)
+##    else:
+##        print nl()
+        
+    
+
+def checknl(np):
+    global pairs
+    if np in pairs:
+        return True
+    else:
+        pairs = pairs + [np]
+        return False
+
+def map_lut_synch(k=6):
+    '''minimizes area '''
+    abc('st; &get;&synch2 -K %d; &ps; &if -F 2 -K %d -C 11 -E .1;&put;ps; mfs2 -a  ;ps; lutpack ;ps'%(k,k))
+    
+##def map_lut_synch_iter(k=6):
+####    print 'entering map_lut_dch_iter with k = %d'%k
+##    best = n_nodes()
+####    print best
+####    print nl()
+##    run_command('write_blif %s_best.blif'%f_name)
+##    n=0
+####    print nl()
+##    while True:
+##        map_lut_synch(k)
+##        if n_nodes()< best:
+##            best = n_nodes()
+####            print 'best=%d'%best
+##            n = 0
+##            abc('write_blif %s_best.blif'%f_name)
+##            print nl(),
+##            continue
+##        else:
+##            n = n+1
+##            if n>2:
+##                break    
+##    abc('r %s_best.blif'%f_name)
 
 def dmitri_iter(k=8):
     best = 100000
@@ -8436,11 +8827,11 @@ def shrink_lut():
     ps()
 
 
-def map_lut(k=4):
+def map_lut(k=6):
     '''minimizes edge count'''
-    for i in range(5):
-        abc('st; if -e -K %d; ps;  mfs ;ps; lutpack -L 50; ps'%(k))
-        print nl(),
+    for i in range(2):
+        abc('st; if -e -K %d; ps;  mfs2 -a ;ps; lutpack ; ps'%(k))
+##        print nl(),
 
 def extractax(o=''):
     abc('extract -%s'%o)
@@ -8448,7 +8839,51 @@ def extractax(o=''):
 def nl():
     return [n_nodes(),n_levels()]
 
+def syn4_iter(th=.999):
+    """ try both &syn4 and dc2 and take the best"""
+    abc('st')
+    tm = time.time()
+    abc('w %s_last.aig')
+    na_last = n_ands()
+    while True:
+        win='dc2'
+        abc('&get;&syn4;&put')
+        abc('w %s_tsyn.aig')
+        na_syn = n_ands()
+        abc('r %s_last.aig')
+        abc('&get;&dc2;&put')
+        na_new = n_ands()
+        if na_syn < na_new:
+            na_new = na_syn
+            abc('r %s_tsyn.aig')
+            win = 'syn'
+        abc('w %s_last.aig')
+        print '[%d,%s]'%(na_new,win)
+##        print nl(),
+        if na_new > th*na_last:
+            break
+        na_last = na_new
+    print 't = %.2f, '%(time.time()-tm),
+    ps()
+
+
+##def syn4dc2_iter(th=.999):
+##    abc('st')
+##    tm = time.time()
+##    while True:
+##        na=n_ands()
+##        abc('w 
+##        abc('&get;&syn4;&put')
+##        print n_ands(),
+####        print nl(),
+##        if n_ands() > th*na:
+##            break
+##    print 't = %.2f, '%(time.time()-tm),
+##    ps()
+
 def dc2_iter(th=.999):
+##    syn4_iter()
+##    return
     abc('st')
     tm = time.time()
     while True:
@@ -8458,7 +8893,7 @@ def dc2_iter(th=.999):
 ##        print nl(),
         if n_ands() > th*na:
             break
-    print 't = %.2f, '%(time.time()-tm),
+##    print 't = %.2f, '%(time.time()-tm),
     ps()
 ##    print n_ands()
 
@@ -8528,6 +8963,7 @@ def speedup_iter(k=8):
     while True:
         nl()
         abc('speedup;if -K %d'%k)
+        print nl()
         if n_levels() < best:
             best = n_levels()
             abc('write_blif %s_bests.blif'%f_name)
@@ -8541,34 +8977,176 @@ def speedup_iter(k=8):
 
 def jog(n=16):
     """ applies to a mapped blif file"""
-    run_command('eliminate -N %d;fx'%n)
-    run_command('if -K %d'%(n/2))
-    run_command('fx')
+##    print ''
+##    ps()
+    run_command('eliminate -N %d'%n)
+##    ps()
+    run_command('sop;fx')
+##    ps()
+    run_command('st;if -K %d'%(n/2))
+##    ps()
+    run_command('sop;fx')
+##    ps()
+    print ''
+    
 
-def perturb_f(k=4):
-    abc('st;dch;if -g -K %d'%(k))
-##    snap()
-    abc('speedup;if -K %d -C 10'%(k))
-    jog(5*k)
-##    snap()
-##    abc('if -a -K %d -C 11 -F 2;mfs -a -L 50;lutpack -L 50'%k
+##def perturb_f(k=4):
+##    abc('st;dch;if -E .1 -R 1.2 -K %d'%(k))
+####    snap()
+##    abc('speedup;if -E .1 -R 1.2 -K %d -C 10'%(k))
+####    jog(5*k)
+####    snap()
+####    abc('if -a -K %d -C 11 -F 2;mfs -a -L 50;lutpack -L 50'%k
 
 def perturb(k=4):
-    abc('st;dch;if -g -K %d'%k)
+##    ps()
+    run_command('st;dch;if -g -K %d;if -K %d'%(k,k))
+##    ps()
 ##    snap()
-    abc('speedup;if -K %d -C 10'%(k))
+    run_command('speedup;if -K %d -C 10'%(k))
+##    ps()
+##    jog(5*k)
     
-def preprocess(k=4):
+##def preprocess_2(k=6,ifprep=1):
+##    global bestk
+##    if not ifprep:
+##        return 1
+##    n_initial = n_nodes()
+##    n_clp_lut = n_clp = 1000000
+##    abc('write_blif %s_temp_initial.blif'%f_name)
+##    abc('w %s_temp_initial.aig'%f_name)
+##    res = 1
+##    bestk = save_bestk(bestk,k)
+##    print 'plain: ',nl()
+##    abc('st')
+##    if n_pis()/n_pos() > 500 or n_ands() > 1000:
+##        bestk = try_elim(k,bestk)
+##        if n_nodes() < bestk:
+##            bestk = save_bestk(n_nodes(),k)
+##    else:
+##        bestk = try_clp(k,bestk)
+##        if n_nodes() < bestk:
+##            bestk = save_bestk(n_nodes(),k)
+##    bestk = unsave_bestk(k)
+
+def preprocess(k=6,ifprep=1):
+##    global bestk
+    if not ifprep:
+        return 1
+    map_lut_dch(k)
+    if_a_iter(k)
+    bestk = save_bestk(100000,k)
+    print 'initial: ',nl()
+    abc('st')
+##    t = 30 #sleep time
+    funcs = create_funcs([18],30) #sleep
+    funcs = funcs + [eval('(pyabc_split.defer(try_elim)(k,bestk))')]
+    funcs = funcs + [eval('(pyabc_split.defer(try_clp)(k,bestk))')]
+    funcs = funcs + [eval('(pyabc_split.defer(try_plain)(k,bestk))')]
+    mtds = ['sleep','elim','clp','plain']
+    print mtds
+    abc('st')
+    j=0
+    for i,res in pyabc_split.abc_split_all(funcs):
+        print i,res
+        if i == 0:
+            print 'sleep timeout'
+            if j > 0: #timeout and at least 1 terminiated.
+                break
+        j=j+1
+        if res < bestk:
+            print '%s got: %d'%(mtds[i],res)
+            run_command('if -a -K %d'%k)
+            print nl()
+            bestk = save_bestk(bestk,k)
+        if j > 2:
+            break
+    bestk = unsave_bestk(k)
+
+def try_plain(k=6,bk=10000):
+    map_lut_dch(k)
+    if_a_iter(k)
+    print '\nplain: ', nl()
+    nn = n_nodes()
+##    if n_nodes() < bk:
+##        bk = save_bestk(bk,k)
+    run_command('st')
+    return nn
+    
+def try_elim(k=6,bk=100000):
+##    abc('st')
+    elim_iter()
+##    print nl()
+    run_command('st;logic;eliminate -V 5;bdd')
+##    abc('st;dc2')
+##    abc('if -a -K %d'%k)
+    map_lut_dch(k)
+    print '\nelim: ', nl()
+    nn = n_nodes()
+##    if n_nodes() < bk:
+##        bk = save_bestk(bk,k)
+    run_command('st')
+    return nn
+
+def try_clp(k=6,bk=100000):
+    t1 = time.time()
+    run_command('clp')
+    nn = n_nodes()
+    abc('muxes;st')
+    if not nn == n_nodes(): #st worked
+        abc('dc2')
+        map_lut_dch(6)
+        print '\nclp: ', nl()
+        nn = n_nodes()
+    run_command('st')
+    print time.time() - t1
+    return nn
+
+##        bk = save_bestk(bk,k)
+##        abc('r %s_temp_initial.blif'%f_name)
+        
+
+##    # clp_lutmin
+##    if stworked:
+##        abc('read_blif %s_temp_clp.blif'%f_name)
+##        run_command('st;lutmin -K %d'%k)
+##        abc('write_blif %s_temp_clp.blif'%f_name)
+##        print '\nclp lutmin: ',nl()
+##        n_clp_lut = n_nodes()
+            
+    unsave_bestk(k)
+##    if n_plain <= min(n_clp,n_clp_lut):
+##        abc('r %s_temp_plain.blif'%f_name)
+##    elif n_clp < n_clp_lut:
+##        abc('r %s_temp_clp.blif'%f_name)
+##    else:
+##        abc('r %s_temp_clp_lut.blif'%f_name)
+##    assert check_blif(),'inequivalence'
+    
+    return res
+
+def elim_iter():
+    abc('st;logic;eliminate -V 1 -N 12')
+    nbest = n_nodes()
+    ni = n_pis()
+    val = 2
+    while True:
+        abc('eliminate -V %d -N %d'%(val,ni/2))
+        if n_nodes() < nbest:
+            nbest = n_nodes()
+            print nbest,
+            val = val*2
+        else:
+            return
+        
+
+def preprocess_old(k=4):
     n_initial = n_nodes()
     abc('write_blif %s_temp_initial.blif'%f_name)
 ##    abc('st;dc2')
     abc('w %s_temp_initial.aig'%f_name)
     ni = n_pis() + n_latches()
     res = 1
-    if ni >= 101:
-        abc('st;if -a -F 2 -K %d'%k)
-        return res
-##    dc2_iter()
     abc('st;if -a -K %d'%k) # to get plain direct map
     if n_nodes() > n_initial:
         abc('r %s_temp_initial.blif'%f_name)
@@ -8577,16 +9155,35 @@ def preprocess(k=4):
     n_plain = n_nodes()
 ##    print nl()
     abc('write_blif %s_temp_plain.blif'%f_name)
+##    print 'wrote blif'
     #clp
-    abc('st;clp; if -a -K %d'%k)
-##    print nl()
-    abc('write_blif %s_temp_clp.blif'%f_name)
-    n_clp = n_nodes()
-    #clp_lutmin
+    print nl()
+    n_clp_lut = n_clp = 1000000
+##    if n_nodes() < 250:
+    if True:
+##        run_command('st;clp -B 10000')
+        run_command('st;clp')
+        nn = n_nodes()
+        run_command('st')
+        if not nn == n_nodes(): #st did not work
+            run_command('if -a -K %d'%k)
+            print nl()
+            abc('write_blif %s_temp_clp.blif'%f_name)
+            n_clp = n_nodes()
     abc('r %s_temp_initial.blif'%f_name)
-    abc('st;clp;lutmin -K %d;'%k)
-    abc('write_blif %s_temp_clp_lut.blif'%f_name)
-    n_clp_lut = n_nodes()
+##    print 'read blif'
+##    if n_nodes() < 250:
+    if True:
+##        run_command('st;clp -B 10000')
+        run_commnd('st;clp')
+        nn = n_nodes()
+        run_command('st')
+        if not nn == n_nodes(): #st did not work
+            run_command('lutmin -K %d'%k)
+##            print nl()
+            abc('write_blif %s_temp_clp.blif'%f_name)
+##            n_clp = n_nodes()
+            print nl()
 ##    print nl()
     if n_plain <= min(n_clp,n_clp_lut):
         abc('r %s_temp_plain.blif'%f_name)
@@ -8598,17 +9195,14 @@ def preprocess(k=4):
         abc('r %s_temp_clp_lut.blif'%f_name)
         res = 1
 ##    print nl()
+    assert check_blif(),'inequivalence'
     return res
-
-def snap():
-##    abc('fraig;fraig_store')
-    abc('fraig_store')
 
 def snap_bestk(k):
     abc('write_blif %s_temp.blif'%f_name)
     unsave_bestk(k)
     snap()
-    abc('r %s_temp.blif'%f_name)
+    abc('read_blif %s_temp.blif'%f_name)
 
 def cec_it():
     """ done because &r changes the names. Can't use -n because rfraig_store reorders pis and pos."""
@@ -8617,82 +9211,110 @@ def cec_it():
     run_command('cec %s_temp.blif'%f_name)
     abc('r %s_temp.blif'%f_name)
 
-def save_bestk(b,k):
+def save_bestk(current_best,k):
 ##    if os.access('%s_best%d.blif'%(f_name,k),os.R_OK):
-##        res = get_bestk(k)
+##        res = get_bestk_value(k)
 ##    else:
     """ saves the best, returns bestk and if not best, leaves blif unchanged""" 
-    res = b
+    res = current_best
     if n_nodes() < res:
         res = n_nodes()
         abc('write_blif %s_best%d.blif'%(f_name,k))
-        print 'best%d = %d'%(k,res)
+        print '\n*** best%d for %s *** = %d\n'%(k,f_name,res)
+        assert check_blif(),'inequivalence'
     return res
 ##    unsave_bestk(k)
 
 def unsave_bestk(k):
-    abc('r %s_best%d.blif'%(f_name,k))
-        
-def unsnap(k=4):
-##    snap()
-    abc('fraig_restore')
-    map_lut_dch(k)
-##    abc('fraig_restore;if -a -F 2 -C 11 -K %d'%k)
+    run_command('read_blif %s_best%d.blif'%(f_name,k))
+    return n_nodes()
 
-def map_until_conv(k=4):
-    kk = 2*k
-    # make sure that no residual results are left over.
-    if os.access('%s_best%d.blif'%(f_name,k),os.R_OK):
-        os.remove('%s_best%d.blif'%(f_name,k))
-    if os.access('%s_best%d.blif'%(f_name,kk),os.R_OK):
-        os.remove('%s_best%d.blif'%(f_name,kk))
-    tt = time.time()
-    #get initial map and save
-    map_lut_dch(k)
-    bestk = save_bestk(100000,k)
-    print nl()
+def snap():
+##    abc('fraig;fraig_store')
+    run_command('fraig_store')
+        
+def unsnap(k=6):
 ##    snap()
-    res = preprocess() #get best of initial, clp, and lutmin versions
-    print nl()
+##    abc('fraig_restore')
 ##    map_lut_dch(k)
-##    ###
-##    bestk = save_bestk(bestk,k)
-##    map_iter(k)
-##    bestk = save_bestk(bestk,k)
-##    ###
-    map_lut_dch_iter(kk) #initialize with mapping with 2k input LUTs
-    bestkk = save_bestk(100000,kk)
-    snap()
-    unsnap(k) #have to do snap first if want current result snapped in.
-        # unsnap fraigs snapshots and does map_lut_dch at end
+##    assert check_blif(),'inequivalence-1'
+    print 'starting fraig_restore'
+    run_command('fraig_restore')
+##    run_command('ps')
+    abc('if -a -F 2 -C 11 -K %d'%k)
+    check_blif()
+##    run_command('ps')
+##    assert check_blif(),'inequivalence-1'
+##    print nl()
+    abc('mfs2 -a ')
     print nl()
+##    assert check_blif(),'inequivalence-2'
+    abc('lutpack ')
+    print nl()
+
+def map_until_conv(k=6,prep=1):
+    global pairs
+##    pairs = []
+    kk = 2*k
+    kk = k + 1
+    # make sure that no residual results are left over.
+    if True:
+        if os.access('%s_best%d.blif'%(f_name,k),os.R_OK):
+            os.remove('%s_best%d.blif'%(f_name,k))
+        if os.access('%s_best%d.blif'%(f_name,kk),os.R_OK):
+            os.remove('%s_best%d.blif'%(f_name,kk))
+        pairs = []
+    tt = time.time()
+    if not prep:
+        map_lut_dch(k)
+##        ps()
+        if_a_iter(k)
+##        ps()
+    ##    map_lut_synch(k)
+        bestk = save_bestk(100000,k)
+        print 'first map_lut_dch yields: ',
+        print nl()
+    else:
+        print 'preprocess entered'
+        res = preprocess(ifprep = prep) #get best of initial, clp, and lutmin versions
+        print nl()
+        print 'preprocess done'
+        bestk = save_bestk(100000,k)
+    print 'starting mapping iteration with %d-LUTs'%k
+    map_lut_dch_iter(k,1,0,1) #initialize with mapping with kk input LUTs
+##    map_lut_synch_iter(kk) PUT IN QUICKER TERMINATTOR
     bestk = save_bestk(bestk,k)
+##    snap() #puts in bestkk in fraig store.
+##    bestk = unsave_bestk(k)
+####    bestk = n_nodes()
+##    snap()
+####    snap_bestk(k) #temporary - puts bestk in fraig store
+##    #*** warning unsnap can hang up because of fraig_restore****
+##    unsnap(k) #have to do snap first if want current result snapped in.
+##        # unsnap fraigs snapshots and does map_lut_dch at end
+##    print 'result of fraig_restore, if with choices, mfs2, and lutpack'
+##    print nl()
+##    assert check_blif(),'inequivalence'
+##    if_a_iter(k)
+##    bestk = save_bestk(bestk,k)
+    print nl()
     abc('r %s_bestk%d.blif'%(f_name,k))
+    print 'iterating map'
     map_iter(k) #1
     bestk = save_bestk(bestk,k)
+    bestkk = 1000000
     while True:
-        print 'Perturbing with %d-Lut'%kk
-##        snap()
-        map_lut_dch_iter(kk)
-##        snap()
+        print '\nPerturbing with %d-Lut'%kk
+        map_lut_dch_iter(kk,1,0,1)
+##        map_lut_synch_iter(kk)
         bestkk_old = bestkk
         bestkk = save_bestk(bestkk,kk)
         if bestkk >= bestkk_old:
             break
-##        snap()
-##        jog(kk)
-##        perturb_f(k)
-##        snap()
-##        perturb_f(k)
-##        snap()
-##        unsave_bestk(k)
-##        map_lut_dch(k+1)
-##        snap()
-##        snap_bestk(k)
+        snap() #puts bestkk in fraig store
+        unsave_bestk(k)
         snap()
-        unsnap(k) #fraig restore and map
-##        bestk = save_bestk(bestk,k)
-##        snap()
+        unsnap(k) #fraig restore and maps into k-luts
         bestk_old = bestk
         map_iter(k)
         bestk = save_bestk(bestk,k)
@@ -8701,47 +9323,51 @@ def map_until_conv(k=4):
         continue
     abc('fraig_restore') #dump what is left in fraig_store
     unsave_bestk(k)
+    if_a_iter(k)
+    bestk = save_bestk(bestk,k)
+    unsave_bestk(k)
     print '\nFinal size = ',
     print nl()
     print 'time for %s = %.02f'%(f_name,(time.time()-tt))
 ##    cec_it()
 
-def get_bestk(k=4):
+def get_bestk_value(k=6):
     abc('write_blif %s_temp.blif'%f_name)
     unsave_bestk(k)
     res = n_nodes()
-    abc('r %s_temp.blif'%f_name)
+    abc('read_blif %s_temp.blif'%f_name)
     return res
 
-def map_iter(k=4):
+def map_iter(k=6):
     tt = time.time()
-    bestk = get_bestk(k)
-##    bestk = n_nodes()
-##    bestk = save_bestk(bestk,k)
-##    abc('st;dch;if -a -F 2 -K %d -C 11; mfs -a -L 1000; lutpack -L 1000'%k)#should be same as Initial
-##    map_lut_dch_iter(k) ####
-    map_lut_dch(k)
-    bestk = save_bestk(bestk,k)
+##    bestk = get_bestk_value(k)
     n=0
-    unsave_bestk(k)
+    bestk = unsave_bestk(k)
+##    bestk = n_nodes()
     while True:
+        print 'perturbing'
+##        abc('if -a -K %d'%(k+2))
 ##        snap()
         perturb(k) #
 ##        snap()
-        perturb(k)
-##        snap_bestk(k)
-##        unsnap(k)
-##        bestk = save_bestk(bestk,k)
+##        perturb(k)
 ##        snap()
-##        map_lut_dch(k+1)
-##        abc('if -K %d'%(k+1))
-##        snap()
-##        unsnap(k)
         old_bestk = bestk
-##        print old_bestk
+##        unsnap(k)
+##        map_lut(k)
+##        bestk = save_bestk(bestk,k)
+        print 'iterating map_lut_dch'
+        if_a_iter(k)
+        print '#nodes after if_a_iter = %d'%n_nodes()
+        if n_nodes() > 1.2*bestk:
+            print 'perturbation too big'
+            break 
         map_lut_dch_iter(k)
+        if n_nodes() > 1.1*bestk:
+            print 'not enough progress'
+            break
         bestk = save_bestk(bestk,k)
-        print bestk
+##        print bestk
         if bestk < old_bestk:
             n=0 # keep it up
             continue
@@ -8750,25 +9376,52 @@ def map_iter(k=4):
         else:
             n = n+1
             print '%d-perturb'%n
-##            snap()
-##            unsave_bestk(k)
     unsave_bestk(k)
 
-def map_star(k=4):
+def check_star(name='adder'):
+    run_command('read_blif %s_best_star.blif'%name)
+    run_command('st;&get')
+    run_command('&cec %s.aig'%(name))
+
+def check_blif():
+    return True #disabling
+##    print 'Checking: ',
+    abc('write_blif %s_bb.blif'%f_name)
+    abc('read_blif %s_best_star.blif'%f_name)
+    abc('st;&get')
+    run_command('&cec -n %s.aig'%f_name)
+##    run_command('cec %s_bb.blif %s.aig'%(f_name,f_name))
+    res = True
+    if is_sat():
+        res = False
+        print '*** NOT OK ***'
+##    else:
+##        print'OK',
+    abc('read_blif %s_bb.blif'%f_name)
+    return res
+        
+
+def map_star(k=6):
+    global pairs
+    pairs = []
     tt = time.time()
-    map_until_conv(k)
+    print '\n**************Starting first map_until_conv**: \n'
+    map_until_conv(k,1) #1 means do preprocess
     abc('write_blif %s_best_star.blif'%f_name)
+    assert check_blif(),'inequivalence'
     best = n_nodes()
     while True:
-        jog(2*k)
-        map_until_conv(k)
+##        jog(2*k)
+        print '\n*************Starting next map_until_conv**: \n'
+        map_until_conv(k,0)
         if n_nodes() >= best:
             break
         else:
             best = n_nodes()
             abc('write_blif %s_best_star.blif'%f_name)
+            assert check_blif(),'inequivalence'
     abc('r %s_best_star.blif'%f_name)
-    print 'SIZE = %d, TIME = %.2f for %s'%(n_nodes(),(time.time() - tt),f_name)
+    print '\n\n*** SIZE = %d, TIME = %.2f for %s ***'%(n_nodes(),(time.time() - tt),f_name)
 
 def decomp_444():
     abc('st; dch; if -K 10 -S 444')
@@ -8929,12 +9582,12 @@ def abstracta(if_bip=True):
     funcs = funcs + [eval('(pyabc_split.defer(monitor_and_prove)())')]
 ##    J = [34,30]
 ##    J = pdrs[:1]+bmcs[:1] #just use one pdr and one bmc here.
-    J = pdrs[:1]+[9,30] #rkb
+    J = pdrs[:1]+[9,30] + [26] #rkb
 ##    J = pdrs+bmcs
 ##    J = modify_methods(J,2)
     funcs = funcs + create_funcs(J,1000)
     mtds = mtds + ['monitor_and_prove'] + sublist(methods,J)
-    print 'methods = ',
+##    print 'methods = ',
 ##    print mtds
     vta_term_by_time=0
     for i,res in pyabc_split.abc_split_all(funcs):
@@ -8944,7 +9597,7 @@ def abstracta(if_bip=True):
             if is_sat():
                 print 'vta/gla abstraction found cex in frame %d'%cex_frame()
                 add_trace('SAT by gla')
-                return SatF
+                return Sat
             if is_unsat():
                 print 'vta/gla abstraction proved UNSAT'
                 add_trace('UNSAT by gla')
@@ -9112,12 +9765,17 @@ def gla_abs_iter(t):
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
     it_interval = 10000 
     total = t
+    #temp
+    total = 10000 #do not want &gla to timeout by itself
+    #temp
     tt = time.time()
     run_command('orpos;&get')
 ##    run_command('&w %s_gla.aig'%f_name)
     abs_depth = abs_depth_prev = 0
 ##    while True:
-    r = 100 *(1 - abs_ratio)
+##    r = 100 *(1 - abs_ratio)
+    r = 100*abs_ratio
+##    r = 75 #############TEMP
     q = 99 #############TEMP
 ##    run_command('&r %s_gla.aig'%f_name)
     time_remain = total - (time.time() - tt) #time remaining
@@ -9125,20 +9783,23 @@ def gla_abs_iter(t):
 ##    if it < 2:
 ##        break
     #gla and vabs are the file with the abstraction info and gabs is the derived file.
-    cmd = '&gla -mvs -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d'%(f_name,it,r,q,abs_depth)
+    cmd = '&gla -mvs -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d -B 1'%(f_name,it,r,q,abs_depth)
     print 'Executing %s'%cmd
     name = '%s_vabs.aig'%f_name
     name_old = '%s_vabs_old.aig'%f_name
 ##    run_command(cmd)
-    abc(cmd)
+    run_command(cmd)
     if os.access(name,os.R_OK):
+        print 'New abstraction written. Possibly grew too big'
         run_command('&r -s %s_vabs.aig'%f_name) #get the last abstraction result
         run_command('&w %s_gla.aig'%f_name) #saves the result of abstraction.
     elif os.access(name_old,os.R_OK):
+        print 'Old abstraction written. New abstraction got too big'
         run_command('&r -s %s_vabs_old.aig'%f_name) #get the last abstraction result
         run_command('&w %s_gla.aig'%f_name) #saves the result of abstraction.
-    else:
-        return
+    else: #this should not happen
+        print 'No vabs file found'
+        return 
     print 'wrote %s_gla file'%f_name
     run_command('&gla_derive;&put')
     run_command('w %s_gabs.aig'%f_name)
@@ -9254,18 +9915,21 @@ def monitor_and_prove():
 ##    if read_and_sleep(5): # wait until first abstraction when res is False
 ##        #time has run out as controlled by abs_time
 ##        return [Undecided_no_reduction] + ['read_and_sleep']
-    t = abs_time +10
+    t = abs_time
+    t=10000 # do not want side engines to time out
     tt = time.time()
+    abs_bad = 1 # start out with abstraction bad because it does not exist
 ##    print 'first read and sleep done'
     #a return of Undecided means that abstraction might be good and calling routine will check this
     while True: #here we iterate looking for a new abstraction and trying to prove it
-        time_done = abs_bad = 0
+        time_done = 0
         funcs = [eval('(pyabc_split.defer(read_and_sleep)())')]
         J = sims+intrps+pdrs+bmcs
         J = modify_methods(J,1)
         funcs = funcs + create_funcs(J,t) 
         mtds = ['read_and_sleep'] + sublist(methods,J)
         print 'methods = %s'%mtds
+        monitor_done = False
         for i,res in pyabc_split.abc_split_all(funcs):
 ##            print 'Mon. & Pr.: ,
 ##            print i,res
@@ -9288,7 +9952,9 @@ def monitor_and_prove():
                     if abs_bad:
                         return [Undecided_no_reduction]+['read_and_sleep']
                     else: #abs is still good. Let other engines continue
-                        return [Undecided]+['read_and_sleep'] #calling routine handles >Unsat all the same right now.
+                        monitor_done = True
+                        continue
+##                        return [Undecided]+['read_and_sleep'] #calling routine handles >Unsat all the same right now.
                 else:
                     assert False, 'something wrong. read and sleep did not return right thing'
             if i > 0: #got result from one of the verify engines
@@ -9302,7 +9968,9 @@ def monitor_and_prove():
                     return [Unsat] + [mtds[i]]
                 elif is_sat() or res < Unsat or res == 'SAT': #abstraction is not good yet.
 ##                    print 'method = %s'%mtds[i]
-                    print 'side method %s found SAT in frame %d'%(mtds[i],cex_frame())
+                    print 'side method %s found SAT in frame %d \n'%(mtds[i],cex_frame())
+                    if monitor_done:
+                        return [Undecided_no_reduction]+['read_and_sleep']
                     if not mtds[i] == 'RareSim': #the other engines give a better estimate of true cex depth
                         read_abs_values()
                         set_max_bmc(abs_depth-1)
@@ -9331,20 +9999,23 @@ def monitor_and_prove():
                     return [Undecided_no_reduction]+['no reduction']
                 else:
                     continue
-            elif res ==True: #read_and_sleep timed out
+            elif res == True: #read_and_sleep timed out
 ##                print 'read_and_sleep timed out'
                 return [Undecided_no_reduction]+['no reduction']
             else:
                 break #this should not happen
         elif abs_bad and time_done:
-##            print 'current abstraction bad, time has run out'
+            print 'current abstraction bad, time has run out'
             return [Undecided_no_reduction]+['no reduction']
-        elif time_done: #abs is good here
-##            print 'current abstraction still good, time has run out'
-            return [Undecided]+['reduction'] #this will cause calling routine to try to verify the final abstraction
-                            #right now handles the same as Undecided_no_reduction-if time runs out we quit abstraction
-        else: #abs good and time not done
-            continue
+##        elif time_done: #abs is good here
+##            continue
+##            # here we keep going even thought  time is done because the abstraction might
+##            #be proved correct. rkb this an experiment
+####            print 'current abstraction still good, time has run out'
+##            return [Undecided]+['reduction'] #this will cause calling routine to try to verify the final abstraction
+##                            #right now handles the same as Undecided_no_reduction-if time runs out we quit abstraction
+        else: #abs good 
+            continue #continue even if time_done
 ##            print 'current abstraction still good, time has not run out'
     return [len(funcs)]+['error']
 
@@ -9357,32 +10028,24 @@ def read_and_sleep(t=5):
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
     #t is not used at present
     tt = time.time()
-    T = 1000 #if after the last abstraction, no answer, then terminate
-    T = abs_time + 10
+    T = abs_time
     set_size()
     name = '%s_vabs.aig'%f_name
     name_old = '%s_vabs_old.aig'%f_name
-##    if ifbip > 0:
-##        name = '%s_vabs.aig'%f_name
-##    print 'name = %s'%name
     sleep(5)
     while True:
-        if time.time() - tt > T: #too much time between abstractions
-##            print 'read_and_sleep timed out in %d sec.'%T
+        if (time.time() - tt) > T: #too much time between abstractions
+            print 'read_and_sleep timed out after %d sec. between abstractions'%T
             return True
         if os.access(name,os.R_OK):
             #possible race condition
-            run_command('&r -s %s; &w %s_vabs_old.aig'%(name,f_name))
+            run_command('&r -s %s; &w %s_vabs_old.aig'%(name,f_name)) #save in old
 ##            print '%s exists'%name
             if not os.access(name,os.R_OK): #if not readable now then what was read in might not be OK.
                 print '%s does not exist'%name
                 continue
-##            print '%s is read'%name
-##            run_command('&r %s;read_status %s_vabs.status'%(name,f_name)) #need to use & space to keep the abstraction information
-            os.remove(name)
+            os.remove(name) #remove the new one
             run_command('read_status %s_vabs.status'%f_name)
-##            print '%s and %s_vabs.status have been read'%(name,f_name)
-##            print 'reading %s_vabs.status'%f_name
             #name is the derived model (not the model with abstraction info
             if os.access(name_old,os.R_OK):
                 run_command('&r -s %s_vabs_old.aig'%f_name)
@@ -9399,15 +10062,11 @@ def read_and_sleep(t=5):
                 abs_depth_prev = abs_depth
                 abs_depth = n_bmc_frames()
                 write_abs_values()
-    ##            print 'abs values has been written'
                 time_remain = T - (time.time() - tt)
-                if abs_done(time_remain):
-                    return True
     ##            if not check_size():
                 if True:
                     print '\nNew abstraction: ',
                     ps()
-    ##                print 'Time = %0.2f'%(time.time() - tt)
                     set_size()
                     abc('w %s_abs.aig'%f_name)
                     return False
@@ -10091,7 +10750,9 @@ def sparse_syn_verv(name='test',ife=True,density=10):
         print ' '
         print '**** fname = %s ****'%fname
         tr,cost_init,cost = mux_initv(tton,ttoff) # mux can choose to implement the complement
-        tree_all = tree_all + [tr]
+##        print tr
+##        tr = [str(i)+'. '] + tr
+        tree_all = tree_all + [str(i)+'. '] + [tr]
         cost_all = cost_all + [cost]
 ##        ppt(tr)
         final_cost = final_cost + cost
@@ -10180,7 +10841,7 @@ def sparsifyv(name='test',density=10):
 
 def cof_recurv(tton,ttoff,sop_in,cost):
     """ cofactoring wrt a single variable has to beat incoming cost
-    a tree is either an sop or an expandion -  ite - [[v,method],tree1,tree2]
+    a tree is either an sop or an expantion -  ite - [[v,method],tree1,tree2]
     the input is the ISF (ton,toff) to be implemented.
     Incoming cost is an upper bound for implementation.
     This returns (sop_in, cost) if there is no expansion that can beat cost.
@@ -10353,6 +11014,7 @@ def get_split_var2v(tton,ttoff): #find most binate variable
     return imin,leaf1,leaf0,cost1,cost0,method
 
 def bbop(tton,ttoff):
+    """ does both isop and bsop and chooses the best"""
     isp = ISOP(tton,ttoff)
     bsp = bsop(tton,~ttoff)
     res = isp
@@ -10362,7 +11024,9 @@ def bbop(tton,ttoff):
 
 def bsop(tton,uv,varbs=[]):
     """ like isop, but at each step tries to make result independant of variable v
-    Like isop result is dependent on the order of the variables."""
+    Like isop result is dependent on the order of the variables.
+    tton is the lower bound and uv is the upperbound
+    """
     N = m.N
 ##    if v == -1:
 ##        v = N-1
@@ -10392,6 +11056,10 @@ def bsop(tton,uv,varbs=[]):
         return result
 
 def choose_varb(tton,uv,varbs):
+    """ chooses the variable with the least number of minterms covered in onset
+    of both R0 and R1. The heuristic is that this would make R0 and R1
+    as simple as possible (maybe).
+    """
     N = m.N
     min_count = 100000
     minv = -1
@@ -11265,6 +11933,7 @@ def ppt_all(t,c):
         print 'PO = %d, cost = %d'%(i,c[i])
         ppt(t[i])
     print 'cost = ',p_red(c)
+    
 def ppt(tree):
     """header fir pretty printing tree"""
     global tab
@@ -11285,7 +11954,13 @@ def pprint_tree(spacer,tree):
         pprint_tree(space,tree[1])
         pprint_tree(space,tree[2])
     elif len(header)== 4: # an xor
-        print spacer+str(header)
+        hd0 = header[0]
+        if hd[0] < 0:
+            header[0] = abs(hd0) - 1
+            st_head = "-"+str(header)
+        else:
+            st_head = str(header)
+        print spacer+st_head
         pprint_tree(space,tree[1])
     else:
         if header == '+' or header == '-': # a tree_sop
@@ -12245,3 +12920,5 @@ def var_xor(v,ph,on,off):
 ##    p1=make_primes(sop(onset),sop(offset))
 ##    d1 = ired(p1,onset)
 ##    return d1
+
+

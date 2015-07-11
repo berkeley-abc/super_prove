@@ -1,5 +1,7 @@
 python -c 'import new_abc_commands'
 
+load_plugin /home/brayton/abc/aig/Python/avy_runner.py AVY
+
 # global parameters
 set check         # checks intermediate networks
 #set checkfio      # prints warnings when fanins/fanouts are duplicated
