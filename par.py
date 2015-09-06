@@ -12,6 +12,10 @@ import random
 import operator
 import pyaig
 
+### this will set up things to simulate the 4 core hwmcc'15 competition.
+##import affinity
+##affinity.sched_setaffinity(os.getpid(), [0, 2, 4, 6])
+
 try:
     import regression
 except:
@@ -84,9 +88,9 @@ sec_sw = False
 sec_options = ''
 pairs = cex_list = []
 TERM = 'USL'
-##last_gasp_time = 10000
-last_gasp_time = 500
-##last_gasp_time = 2001 #set to conform to hwmcc12
+##last_gasp_time = 10000 -- controls BMC_VER_result time limit
+##last_gasp_time = 500
+last_gasp_time = 3*3600 #set to conform to hwmcc15 for 3 hours
 use_pms = True
 
 #gabs = False #use the gate refinement method after vta
@@ -100,9 +104,10 @@ gla = True #use gla_abs instead of vta_abs
 abs_time = 150
 abs_time = 5000
 abs_time = 500
-abs_time = 100
+abs_time = 300 #changed for hwmcc15
 abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
-total_spec_refine_time = 150
+##total_spec_refine_time = 150
+total_spec_refine_time = 200 # changed for hwmcc15
 ifbip = 0 # sets the abtraction method to vta or gla, If = 1 then uses ,abs
 if_no_bip = False #True sets it up so it can't use bip and reachx commands.
 abs_ratio = .6 #this controls when abstraction is too big and gives up
@@ -224,13 +229,18 @@ exactbmcs = [9,2,31]
 exbmcs = [2,9,31]
 bmcs = [9,30,31,2,38]
 bmcs1 = [9]
-#added AVY as a new ubterpolation method
-allintrps = [41,23,1,22]
-bestintrps = [41,23]
-##intrps = [23,1]
-intrps = [41,23,1] #putting ,imc-sofa first for now to test
-intrps = [41,23] #rkb
+
+#added AVY as a new interpolation method
+#no AVY = 41 for hwmcc15
+##allintrps = [41,23,1,22]
+allintrps = [23,1,22]
+##bestintrps = [41,23]
+bestintrps = [23]
+intrps = [23,1]
+##intrps = [41,23,1] #putting ,imc-sofa first for now to test
+##intrps = [41,23] #rkb
 # done adding AVY
+
 allsims = [26,3]
 sims = [26] 
 allslps = [18]
@@ -259,7 +269,7 @@ def initialize():
     max_bmc = -1
     last_time = 0
 ##    last_gasp_time = 2001 #set to conform to hwmcc12
-    last_gasp_time = 901 #set to conform to hwmcc12
+    last_gasp_time = 3*3600 #set to conform to hwmcc15
     j_last = 0
     seed = 113
     init_simp = 1
@@ -284,8 +294,10 @@ def initialize():
     abs_time = 100000 #let size terminate this.
     abs_time = 500
     abs_time = 150
+    abs_time = 300 #for hwmcc15
     abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
-    total_spec_refine_time = 150 # timeout for speculation refinement
+##    total_spec_refine_time = 150 # timeout for speculation refinement
+    total_spec_refine_time = 300 # timeout for speculation refinement changed for hwmcc15
     abs_ratio = .5 
 ##    hist = []
     skip_spec = False
@@ -302,8 +314,6 @@ def initialize():
 ##    gabs = False
 ##    abs_time = 500
 ##    gabs = True
-
-    
 
 def set_abs_method():
     """ controls the way we do abstraction, 0 = no bip, 1 = old way, 2 use new bip and -dwr
@@ -422,16 +432,16 @@ def set_engines(N=0):
     """
     global reachs,pdrs,sims,intrps,bmcs,n_proc,abs_ratio,ifbip,bmcs1, if_no_bip, allpdrs,allbmcs
     bmcs1 = [9] #BMC3
-##    #for HWMCC we want to set N = 8
-##    N = 8
+    #for HWMCC we want to set N = 
+    N = 4
     if N == 0:
         N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
 ##        N = n_proc = 8 ### simulate 4 processors for HWMCC - turn this off a hwmcc.
     else:
         n_proc = N
 ##    print 'n_proc = %d'%n_proc
-    #strategy is to use 2x number of processors
-    N = n_proc = -1+2*N
+    #strategy is to use 2x number of processors 
+    N = n_proc = 2*N
     if N <= 1:
         reachs = [24]
         pdrs = [7]
@@ -447,13 +457,13 @@ def set_engines(N=0):
         intrps = []
         sims = []
         slps = [18]
-    elif N <= 4:
+    elif N <= 4: #this will be the operative one for hwmcc'15
         reachs = [24] #reachy
         pdrs = [7,34] #prdm pdr_abstract
         if if_no_bip:
             allpdrs = pdrs = [7,19] #pdrm pdrmm
         bmcs = [9,30] #bmc3 bmc3 -S
-        intrps = [41,23] #unterp_m
+        intrps = [23] #unterp_m
         sims = [26] #Rarity_sim
         slps = [18] #sleep
 # 0.PDR, 1.INTERPOLATION, 2.BMC, 3.SIMULATION,
@@ -467,12 +477,12 @@ def set_engines(N=0):
 # BIPS = 0.PDR, 1.INTERPOLATION, 2.BMC, 14.PDRseed, 22.INTRP_bwd, 34.pdr_abstract
 #       also  reparam which uses ,reparam 
 
-    elif N <= 8: #used for HWMCC
+    elif N <= 8: #used for HWMCC'15
         reachs = [24] #REACHY
         allpdrs = pdrs = [7,34,14] #PDRM pdr_abstract PDR_seed
-        intrps = [41,23,1] #Interp_m
-        intrps = [41,23] #rkb
-        allbmcs = bmcs = [9,30,2] #BMC3 bmc3 -S bmc_j bmc2
+##        intrps = [41,23,1] #Interp_m
+        intrps = [23] #rkb
+        allbmcs = bmcs = [9,30,2] #BMC3 bmc3 -S BMC 
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
             intrps = allintrps = [41,23] #Interp_m
@@ -481,10 +491,12 @@ def set_engines(N=0):
         slps = [18] #sleep
     else:
         reachs = [24] #REACHY REACHX
-        pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
-        pdrs = [7,34,14,0]
-        intrps = [41,23,1] #Interp_m INTERPOLATION
-        intrps = [41,23] #rkb
+##        pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
+        pdrs = allpdrss=[7,34,14]
+##        intrps = [41,23,1] #Interp_m INTERPOLATION
+##        intrps = [41,23] #rkb
+        intrps = [23,1] #Interp_m INTERPOLATION
+        intrps = [23] #rkb
         bmcs = allbmcs   #allbmcs = [9,30,2,31,38]
         if if_no_bip:
             allpdrs = pdrs = [7,19] #PDRM PDRMm
@@ -493,6 +505,9 @@ def set_engines(N=0):
             bmcs = [9,30,38] #BMC3 bmc3 -S 
         sims = [26] #Rarity_Sim
         slps = [18] #sleep
+    print 'No. engines = %d,%d '%(N,n_proc)
+    print 'pdrs = %s'%str(pdrs)
+    print 'bmcs = %s'%str(bmcs)
         
 def set_globals():
     """This sets global parameters that are used to limit the resources used by all the operations
@@ -1686,7 +1701,7 @@ def initial_speculate(sec_opt='',t=0):
 ##        cmd = "&get; &equiv3 -lv -F 20 -T %f -R %d -S %d"%(3*t,rounds,rounds/20)
 ##    else:
 ##        cmd = "&get; &equiv3 -v -F 20 -T %f -R %d -S %d"%(3*t,rounds,rounds/20)
-    cmd = "&get; &equiv3 -v -F 20 -T %d -R %d -S %d"%(int(t),0,0) #####XXX
+    cmd = "&get; &equiv3 -v -F 20 -T %d -R %d -S %d"%(int(t),0,0) #####
     print cmd
     abc(cmd)
 ##    print 'AND space after &equiv3: ',
@@ -1703,7 +1718,6 @@ def initial_speculate(sec_opt='',t=0):
     fn = init_initial_f_name
     abc('&w %s_initial_gore_no_filter.aig'%fn)
     if not sec_sw:
-
         f_name_protect = f_name
         print 'fn = ',fn
         abc('&r -s %s_initial_gore_no_filter.aig'%fn)
@@ -2140,7 +2154,8 @@ def speculate(t=0):
     print '\nIterating speculation refinement'
     sims_old = sims
     sims = sims[:1] 
-    J = slps+sims+pdrs+intrps+bmcs
+##    J = slps+sims+pdrs+intrps+bmcs
+    J = slps+sims+pdrs+bmcs #changed for hwmcc15
     J = modify_methods(J)
     print 'Parallel refinement methods = ',
     print sublist(methods,J)
@@ -2373,141 +2388,141 @@ def speculate(t=0):
         write_file('spec')
         return Undecided_reduction
 
-def sst(t=2000):
-    '''aimple SAT which writs out an unmapped cex to a file for reporting to hwmcc'''
-    y = time.time()
-    J = allbmcs+pdrs+sims+[5] #5 is pre_simp
-    funcs = create_funcs(J,t)
-    mtds =sublist(methods,J)
-    print mtds
-    fork_last(funcs,mtds)
-    result = get_status()
-    if result > Unsat:
-        write_file('smp')
-        result = verify(slps+allbmcs+pdrs+sims,t)
-        result = get_status()
-    if result < Unsat: #rkb
-        print 'unmapping cex'
-        res = unmap_cex()
-##        result = ['SAT'] + result1
-        report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
-    print 'Time for simple_sat = %0.2f'%(time.time()-y)
-    report_bmc_depth(max(max_bmc,n_bmc_frames()))
-    return [RESULT[result]] + ['sst']
+##def sst(t=2000):
+##    '''simple SAT which writes out an unmapped cex to a file for reporting to hwmcc'''
+##    y = time.time()
+##    J = allbmcs+pdrs+sims+[5] #5 is pre_simp
+##    funcs = create_funcs(J,t)
+##    mtds =sublist(methods,J)
+##    print mtds
+##    fork_last(funcs,mtds)
+##    result = get_status()
+##    if result > Unsat:
+##        write_file('smp')
+##        result = verify(slps+allbmcs+pdrs+sims,t)
+##        result = get_status()
+##    if result < Unsat: #rkb
+##        print 'unmapping cex'
+##        res = unmap_cex()
+####        result = ['SAT'] + result1
+##        report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
+##    print 'Time for simple_sat = %0.2f'%(time.time()-y)
+##    report_bmc_depth(max(max_bmc,n_bmc_frames()))
+##    return [RESULT[result]] + ['sst']
+##
+##
+##def simple_sat(t=2001):
+##    """
+##    aimed at trying harder to prove SAT
+##    """
+##    y = time.time()
+##    bmcs2 = [9,31]
+##    bmcs2 = [9,30]
+##    J = bmcs+pdrs+sims+[5] #5 is pre_simp
+####    J = modify_methods(J)
+####    J = [14,2,7,9,30,31,26,5] 
+##    funcs = create_funcs(J,t)
+##    mtds =sublist(methods,J)
+##    print mtds
+##    fork_last(funcs,mtds)
+##    result = get_status()
+##    if result > Unsat:
+##        write_file('smp')
+##        result = verify(slps+allbmcs+pdrs+sims,t)
+##    print 'Time for simple_sat = %0.2f'%(time.time()-y)
+##    report_bmc_depth(max(max_bmc,n_bmc_frames()))
+##    return [RESULT[result[0]]] + [result[1]]
+##
+##def spd(t=900):
+##    """
+##    parallel super_deep
+##    tries bmcs both before and after simplify
+##    """
+##    y=time.time()
+##    funcs = create_funcs([18],t-2) #sleep
+##    funcs = funcs + [eval('(pyabc_split.defer(super_deep_i)(t))')]
+##    funcs = funcs + [eval('(pyabc_split.defer(super_deep_s)(t))')]
+##    mtds = ['sleep','initial','after_simp']
+##    print mtds
+##    mx = -1 
+##    for i,res in pyabc_split.abc_split_all(funcs):
+##        print i,res
+##        if i == 0:
+##            break
+##        if res == 'SAT' or res < Unsat:
+##            mx = n_bmc_frames()
+##            break
+##        print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],res,(time.time()-y))
+##        if res > mx:
+##            mx = res
+##            report_bmc_depth(mx)
+##    report_bmc_depth(mx)
+##    print 'Best depth = %d'%mx
+##    return mx
+##   
+##
+##def super_deep_i(tt=900):
+##    """
+##    aimed at finding the deepest valid depth starting from the initial aig
+##    """
+##    y = z = time.time()
+##    J = [9,31,40]
+##    if n_latches() < 200:
+##        J = J + [24]
+##    t = tt-10
+##    funcs = create_funcs([18],t) #sleep
+##    funcs = funcs + create_funcs([2],max(5,t-40))
+##    funcs = funcs + create_funcs(J,t-5)
+##    mtds =['sleep'] + sublist(methods,[2]+J)
+##    print mtds
+##    mx = -1
+##    for i,res in pyabc_split.abc_split_all(funcs):
+##        if i == 0:
+##            break
+##        if res == 'SAT'or res < Unsat:
+##            set_max_bmc(n_bmc_frames())
+##            return 'SAT'
+##        if n_bmc_frames() > mx:
+##            mx = n_bmc_frames()
+##        print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
+##    print 'Time for super_deep_i = %0.2f'%(time.time()-z)
+##    print 'max good depth initial = %d'%(mx)
+##    report_bmc_depth(mx)
+##    return mx
+##
+##def super_deep_s(tt=900):
+##    """
+##    aimed at finding the deepest valid depth - simplifies first
+##    """
+##    z = y = time.time() #make it seem like it started 15 sec before actually
+##    rel = prs(1,1) # pre simplicatin
+##    time_used = time.time() - y
+##    J = [9,31,40]
+##    if n_latches() < 200:
+##        J = J + [24]
+##    ttt = tt-10
+##    t = max(0,ttt-time_used) #time left
+##    funcs = create_funcs([18],t) #sleep
+##    funcs = funcs + create_funcs([2],max(5,t-40))
+##    funcs = funcs + create_funcs(J,t-5)
+##    mtds =['sleep'] + sublist(methods,[2]+J)
+##    print mtds
+##    mx = -1
+##    for i,res in pyabc_split.abc_split_all(funcs):
+##        if i == 0:
+##            break
+##        if res == 'SAT' or res < Unsat:
+##            set_max_bmc(n_bmc_frames())
+##            return 'SAT'
+##        if n_bmc_frames() > mx:
+##            mx = n_bmc_frames()
+##        print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
+##    print 'Time for super_deep_s = %0.2f'%(time.time()-z)
+##    print 'max good depth simplified = %d'%(mx)
+##    report_bmc_depth(mx)
+##    return mx
 
-
-def simple_sat(t=2001):
-    """
-    aimed at trying harder to prove SAT
-    """
-    y = time.time()
-    bmcs2 = [9,31]
-    bmcs2 = [9,30]
-    J = allbmcs+pdrs+sims+[5] #5 is pre_simp
-##    J = modify_methods(J)
-##    J = [14,2,7,9,30,31,26,5] 
-    funcs = create_funcs(J,t)
-    mtds =sublist(methods,J)
-    print mtds
-    fork_last(funcs,mtds)
-    result = get_status()
-    if result > Unsat:
-        write_file('smp')
-        result = verify(slps+allbmcs+pdrs+sims,t)
-    print 'Time for simple_sat = %0.2f'%(time.time()-y)
-    report_bmc_depth(max(max_bmc,n_bmc_frames()))
-    return [RESULT[result[0]]] + [result[1]]
-
-def spd(t=900):
-    """
-    parallel super_deep
-    tries bmcs both before and after simplify
-    """
-    y=time.time()
-    funcs = create_funcs([18],t-2) #sleep
-    funcs = funcs + [eval('(pyabc_split.defer(super_deep_i)(t))')]
-    funcs = funcs + [eval('(pyabc_split.defer(super_deep_s)(t))')]
-    mtds = ['sleep','initial','after_simp']
-    print mtds
-    mx = -1 
-    for i,res in pyabc_split.abc_split_all(funcs):
-        print i,res
-        if i == 0:
-            break
-        if res == 'SAT' or res < Unsat:
-            mx = n_bmc_frames()
-            break
-        print 'Method %s: depth = %d, time = %0.2f '%(mtds[i],res,(time.time()-y))
-        if res > mx:
-            mx = res
-            report_bmc_depth(mx)
-    report_bmc_depth(mx)
-    print 'Best depth = %d'%mx
-    return mx
-   
-
-def super_deep_i(tt=900):
-    """
-    aimed at finding the deepest valid depth starting from the initial aig
-    """
-    y = z = time.time()
-    J = [9,31,40]
-    if n_latches() < 200:
-        J = J + [24]
-    t = tt-10
-    funcs = create_funcs([18],t) #sleep
-    funcs = funcs + create_funcs([2],max(5,t-40))
-    funcs = funcs + create_funcs(J,t-5)
-    mtds =['sleep'] + sublist(methods,[2]+J)
-    print mtds
-    mx = -1
-    for i,res in pyabc_split.abc_split_all(funcs):
-        if i == 0:
-            break
-        if res == 'SAT'or res < Unsat:
-            set_max_bmc(n_bmc_frames())
-            return 'SAT'
-        if n_bmc_frames() > mx:
-            mx = n_bmc_frames()
-        print 'Method on initial %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
-    print 'Time for super_deep_i = %0.2f'%(time.time()-z)
-    print 'max good depth initial = %d'%(mx)
-    report_bmc_depth(mx)
-    return mx
-
-def super_deep_s(tt=900):
-    """
-    aimed at finding the deepest valid depth - simplifies first
-    """
-    z = y = time.time() #make it seem like it started 15 sec before actually
-    rel = prs(1,1) # pre simplicatin
-    time_used = time.time() - y
-    J = [9,31,40]
-    if n_latches() < 200:
-        J = J + [24]
-    ttt = tt-10
-    t = max(0,ttt-time_used) #time left
-    funcs = create_funcs([18],t) #sleep
-    funcs = funcs + create_funcs([2],max(5,t-40))
-    funcs = funcs + create_funcs(J,t-5)
-    mtds =['sleep'] + sublist(methods,[2]+J)
-    print mtds
-    mx = -1
-    for i,res in pyabc_split.abc_split_all(funcs):
-        if i == 0:
-            break
-        if res == 'SAT' or res < Unsat:
-            set_max_bmc(n_bmc_frames())
-            return 'SAT'
-        if n_bmc_frames() > mx:
-            mx = n_bmc_frames()
-        print 'Method on simplified %s: depth = %d, time = %0.2f '%(mtds[i],n_bmc_frames(),(time.time()-z))
-    print 'Time for super_deep_s = %0.2f'%(time.time()-z)
-    print 'max good depth simplified = %d'%(mx)
-    report_bmc_depth(mx)
-    return mx
-
-def simple(t=10000,no_simp=0,check_trace=False):
+def simple(t=100000,no_simp=0,check_trace=True):
     y = time.time()
 ##    pre_simp()
     if not no_simp:
@@ -2523,7 +2538,8 @@ def simple(t=10000,no_simp=0,check_trace=False):
         if n_latches() == 0:
             return [RESULT[check_sat()]]+['pre_simp']
 ##    J = slps+sims+bmcs+pdrs+intrps+pre
-    J = slps+sims+allbmcs+allpdrs+intrps
+##    J = slps+sims+allbmcs+allpdrs+intrps
+    J = slps+sims+pdrs+intrps+bmcs
     J = modify_methods(J)
     mtds = sublist(methods,J)
     print mtds
@@ -2536,18 +2552,18 @@ def simple(t=10000,no_simp=0,check_trace=False):
     return [RESULT[result[0]]] + [result[1]]
 
 
-def simple_bip(t=1000):
-    y = time.time()
-    J = [0,14,1,2,30,5] #5 is pre_simp
-    funcs = create_funcs(J,t)
-    mtds =sublist(methods,J)
-    fork_last(funcs,mtds)
-    result = get_status()
-    if result > Unsat:
-        write_file('smp')
-        result = verify(slps+[0,14,1,2,30],t)
-    print 'simple_bip = %0.2f'%(time.time()-y)
-    return RESULT[result] 
+##def simple_bip(t=1000):
+##    y = time.time()
+##    J = [0,14,1,2,30,5] #5 is pre_simp
+##    funcs = create_funcs(J,t)
+##    mtds =sublist(methods,J)
+##    fork_last(funcs,mtds)
+##    result = get_status()
+##    if result > Unsat:
+##        write_file('smp')
+##        result = verify(slps+[0,14,1,2,30],t)
+##    print 'simple_bip = %0.2f'%(time.time()-y)
+##    return RESULT[result] 
 
 def check_same_gsrm(f):
 ##    return False #disable the temporarily until can figure out why this is there
@@ -3736,7 +3752,7 @@ def try_frames_2():
         print 'Expanded to 2 frames per cycle: latches reduced to %d'%n_latches()
         add_trace('frames_2')
 ##        res = reparam()
-##        xxxxx handle this. I guess no need to do reparametrization here.
+##        handle this. I guess no need to do reparametrization here.
 ##      should do something about #PIs and depth of cex's
 ##        if res:
 ##            aigs.push()
@@ -4045,7 +4061,10 @@ def remove(lst,v=0):
         v = 1 # This makes zero does as before.
     zero(lst,v)
     l=remove_const_v_pos(v) #uses value v to remove
-    assert len(lst) == (n_before - n_pos()),'Inadvertantly removed some const-0 POs.\nPO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
+    if not len(lst) == (n_before - n_pos()):
+        print 'WARNING: Inadvertantly removed some const-0 POs.\nPO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
+##    print 'PO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
+##    assert len(lst) == (n_before - n_pos()),'Inadvertantly removed some const-0 POs.\nPO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
 ##    print 'PO_before = %d, n_removed = %d, PO_after = %d'%(n_before, len(lst), n_pos())
 
 
@@ -4072,6 +4091,7 @@ def listr_v_pos(v=0):
 ##            print 'removed PO %d'%j
             ll = [j] + ll
     return ll
+
 
 def list_v_pos(v=0):
     """ returns a list of const-0 pos and does not remove them
@@ -4329,7 +4349,7 @@ def avg(L):
         sum = sum + L[i]
     return sum/len(L)
 
-def sp(n=0,t=2001,check_trace=False):
+def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
     """Alias for super_prove, but also resolves cex to initial aig"""
     global initial_f_name
     print '\n               *** Executing super_prove ***'
@@ -4468,6 +4488,7 @@ def expand(s,ind,v):
     return ss
 
 def remove_v(ss,v):
+    """ removes from ss those that have value v"""
     s = []
     for i in range(len(ss)):
         if ss[i] == v:
@@ -6103,7 +6124,7 @@ def x_ops(ops,L,t):
     return result
 
 def iso(n=0):
-    if n_ands() > 1000000 and not n_latches == 0:
+    if n_ands() > 1000000 and not n_latches() == 0:
         print 'circuit too large - over 1000000 ANDS'
         return False
     if n_pos() < 2:
@@ -6113,12 +6134,12 @@ def iso(n=0):
     if n == 0:
         abc('&get;&iso -q;&put')
         if n_pos() == npos:
-            print 'no reduction'
+##            print 'no reduction'
             return False
     else:
         run_command('&get;&iso;&put')
         if n_pos() == npos:
-            print 'no reduction'
+##            print 'no reduction'
             return False
     print 'Reduced n_pos from %d to %d'%(npos,n_pos())
     return True
@@ -6286,10 +6307,10 @@ def BMC_VER_result(t=0):
     if t == 0:
         t = last_gasp_time
     print 'Verify time set to %d'%t
-    J = slps + allpdrs2 + bmcs + intrps + sims
+    J = slps + allpdrs + bmcs + intrps + sims
     last_name = seq_name(f_name).pop()
     if not last_name in ['abs','spec']:
-        J = slps +allpdrs2 +bmcs + intrps + sims
+        J = slps +allpdrs +bmcs + intrps + sims
 ##    if 'smp' == last_name or last_name == f_name: # then we try harder to prove it.
     J = modify_methods(J) #if # processors is enough and problem is small enough then add in reachs
     F = create_funcs(J,t)
@@ -8348,7 +8369,785 @@ def speedup(k=6):
     run_command('st;&get;&syn2;&if -K %d -C 16 -g;&ps;&synch2;&if -K %d -C 16;&ps;&mfs;&ps;&put'%(k,k))
     print nl()
 
+#+++++++++++++++++ start SCC +++++++++++++++++++++++++++++++
+def get_SCCs():
+    global fi,fo,all_seen
+    global n_init_pis, n_init_latches,n_init_pos
+
+##    fi = fi_sig(n_init_pis,n_init_pos)
+##    fo = fo_sig(fi)
+    check_fifo(fi,fo)
+    all_seen = set([]) #indicates it is already in an SCC
+    sccs = []
+    for i in range(n_pos()): # do each of the POs
+        if i in all_seen: # already in some scc
+            continue
+        if fo[i] == [] or fi[i] == []:
+            scci = set([-i]) # -i means scc singleton with no self loop
+        else:
+            tfoi = tfo(i) # list of nodes in transitive fanout of i
+                #excluding all_seen
+##            print len(tfoi)
+            tfii = tfi(i) # list of nodes in transitive fanin of i
+                #excluding all_seen
+            scci = tfoi&tfii
+##            print [len(tfii),len(tfoi),len(scci)],
+            if len(scci) == 1 and not i in fo[i]: #i is always in tfii and tfoi
+                scci = set([-i]) #case when no self loop on node i
+        sccs.append(list(scci)) # list of co's in same scc as co i
+        if len(scci) > 1:
+            print 'SCC size %d '%len(scci),
+        if scci == [-i]:
+            all_seen.add(i) # a singeton scc
+        else:
+            all_seen = all_seen | scci
+    return sccs
+
+def fo_sig(fi=[]):
+    """ get fanout signals of each comb PO"""
+    global n_init_pis, n_init_latches,n_init_pos,lengths
+    if fi == []:
+        fis = fi_sig(n_init_pis,n_init_pos)
+    else:
+        fis = fi       
+    fos = [set([]) for i in range(n_pos())]
+    for i in range(len(fos)):
+        for j in fis[i]:
+            if j > -1:
+                fos[j].add(i)
+    fos = [list(fos[j]) for j in xrange(len(fos))]
+    return fos
+
+def fo_sig_pi(fi=[]):
+    """ get fanouts of the pis"""
+    global n_init_pis, n_init_latches,n_init_pos,lengths
+    if fi == []:
+        fis = fi_sig(n_init_pis,n_init_pos)
+    else:
+        fis = fi       
+    fos = [set([]) for i in range(n_init_pis)]
+    for i in range(n_pos()):
+        fisi= [(abs(j)-1) for j in fis[i] if j < 0] #restrict to PIs
+        for j in fisi:
+            fos[j].add(i)
+    for j in range(len(fos)):
+        fosj = list(fos[j])
+        fosj.sort()
+        fos[j] = fosj
+##    fos = [list(fos[j]) for j in xrange(len(fos))]
+    return fos
+
+def iso_map(fo_pi,isos2):
+    """ map fanouts into their iso groups"""
+    mp = get_map(isos2)
+    res = []
+    for j in range(len(fo_pi)):
+        foj = fo_pi[j]
+        setj = set([])
+        for i in foj:
+            setj.add(mp[i])
+        lj = list(setj)
+        lj.sort()
+        res.append(lj)
+    return res
+
+def group_PIs(fi,isos2):
+    """ find common groupa of fanouts and put them in same 'iso' group of PIs"""
+    fo_pi = fo_sig_pi(fi)
+    iso_fo = iso_map(fo_pi,isos2)
+    fog = [[iso_fo[i],i] for i in range(len(iso_fo))]
+    fog.sort()
+    sort_order = [fog[i][1] for i in xrange(len(fog))] # split apart
+    fos = [fog[i][0] for i in xrange(len(fog))] #XXX
+    ispi = gp_pis(fos,sort_order)
+    return fo_pi,fos,sort_order,ispi
+            
+def gp_pis(x,o): #XXX
+    res = []
+    lst = []
+    last = -100000
+    for i in range(len(x)):
+        if x[i] == last:
+            lst.append(o[i]) #add to list
+        else:
+            res.append(lst)
+            last = x[i]
+            lst = [o[i]] #start new list
+    res.append(lst)
+    return res[1:]
+    
+
+
+def fi_sig(npi=0,npo=1):
+    """ get the fanins signals of each comb PO"""
+    global n_init_pis, n_init_latches,n_init_pos,lengths
+    if npi == 0 and npo == 1:
+        npi = n_init_pis
+        npo = n_init_pos
+    fis=[]
+    for i in range(n_pos()): # no. of co's
+        coi = co_supp(i) # fanins of ith PO or flop Needs original comb circuit in space
+        co = set([])
+        for j in coi:
+            if j < npi:
+                co.add(j-npi)
+            else:
+                co.add(j-npi+npo)
+        fis.append(list(co))
+    return fis
+
+##
+##def tfi(i):
+##    """
+##    finds tfi of node i that are not already in an scc.
+##    j in allseen means that it is already in an scc
+##    """
+##    global fi,fo,all_seen
+##    tbt = set([i]) #to be traced
+##    hit = set([]) #nodes hit so far
+##    while len(tbt)>0:
+##        x = tbt.pop() #get next one to trace
+##        hit.add(x) # have hit x now
+##        for j in fi[x]: #j in the fanin of x
+##            if j in all_seen or j in hit or j < 0: # eliminates any scc found in any fanout.
+##                continue
+##            tbt.add(j) #needs to be traced later
+##    return hit
+##
+##def tfo(i):
+##    """
+##    finds tfo of node i that are not already in an scc.
+##    j in allseen means that it is already in an scc
+##    """
+##    global fi,fo,all_seen
+##    tbt = set([i]) # to be traced
+##    hit = set([]) # nodes hit so far
+##    while len(tbt)>0:
+##        x = tbt.pop() # get next one to trace
+##        hit.add(x) # have hit x now
+##        for j in fo[x]: # j in the fanout of x
+##            if j in all_seen or j in hit: # eliminates any scc found in any fanout.
+##                continue
+##            tbt.add(j) # needs to be traced later
+##    return hit
+
+
+##def get_trace(sc,fnin):
+##    """ get supports of each scc of size > 1 in terms of sccs of size > 1"""
+##    global scc,fi,scc_map,d, mscc
+##    scc = list(sc)
+##    fi = list(fnin)
+##    scc_map = get_map(scc)
+##    mscc = range(n_init_pos)+[i for i in range(len(scc)) if len(scc[i]) > 1] #sccs with multiple nodes.
+##    fim = []
+##    d = dict([])
+##    for j in mscc: #only those of size >1
+##        trj = list(trace(j))
+##        trj.sort()
+##        trj = prpr(trj)
+##        fim.append([j,trj])
+##    return fim
+##
+##def trace(j):
+##    """
+##    finds the support of scc j in terms of sccs of size > 1
+##    """
+##    global scc,fi,scc_map,d, mscc
+##    if j in d:
+##        return d[j]
+##    fij = get_scfi(j,scc,fi,scc_map) #immediate scc fanins of scc j
+##    fim = set([])
+##    for k in fij:
+##        if not k in d:
+##            if k in mscc:
+##                trk = set([k])
+##            else:
+##                trk = trace(k)
+####            print trk
+##        else:
+##            trk = d[k]
+##        fim = fim | trk
+####        print fim
+##    d.update([[j,fim]])
+##    return fim # a set
+
+def print_pr(L):
+    for j in range(len(L)):
+        if not len(L[j]) == 0:
+            print '%d. '%j+prpr(L[j])
+
+
+def prpr(L0):
+    """ print with only the beginning and end of consecutive numbers"""
+    s=''
+    j_old =-2
+    L = L0+[-1]
+    for j in L:
+        if not j == j_old +1:
+            if not j_old == -2:
+                if j_beg == j_old:
+                    s = s + ', %d'%(j_beg)
+                else:
+                    s = s + ', %d-%d'%(j_beg,j_old)
+            j_beg = j
+        j_old = j
+    return s[2:]
+
+                    
+def get_map(x):
+    """ expands list of lists x into index list L where L[i] = j
+    means i is in jth list of x"""
+    xc=list(x)
+    x_map = [-1]*n_pos()
+    for i in range(len(xc)):
+        xci = xc[i]
+        if len(xci) == 1:
+            xci[0] = abs(xci[0])
+        for j in xci: # PO j is in the ith x
+            x_map[j]=i # in ith x
+    return x_map
+
+
+def layer(x):
+    Lx = len(x)
+    ly = [0]*Lx
+    tbd = set(range(Lx))
+    while not len(tbd) == 0:
+        i = tbd.pop()
+        for j in x[i]:
+            if ly[j] <= ly[i]:
+                ly[j] = ly[i]+1
+                tbd.add(j)
+                assert ly[j] < Lx,'loop'
+##        tbd.add(x[i])
+    return ly
+
+def lsort(x):
+    """ sorts a lattice, given the immediate fanins of each node."""
+    ly = layer(x)
+    xx = []
+    for i in range(max(ly)+1):
+        for j in range(len(x)):
+            if ly[j] == i:
+                xx.append(j)
+    return xx
+        
+##def fi_scc(scc,fi):
+##    """ get list of signal inputs for each scc """
+##    fi_sc=[]
+##    for i in range(len(scc)):
+##        fii= set([])
+##        for j in scc[i]:
+##            fii = fii | set(fi[j])
+##        fii = list(fii)
+##        fii.sort()
+##        fi_sc.append(fii)
+##    return fi_sc
+
+
+##def scc_fi(scc,fi):
+##    """ get the immediate fanins of the scc's in terms of scc's """
+##    if len(scc) < 2:
+##        print "single node SCC  for entire graph"
+##        return [[]]
+##    scc_map = get_map(scc)
+##    print 'scc_map done'
+##    assert not -1 in scc_map, '-1 at location %d'%scc_map.index(-1)
+##    scfi = []
+##    for j in range(len(scc)): # jth scc
+##        fij = get_scfi(j,scc,fi,scc_map) #returns a set
+##        fij = list(fij)
+##        fij.sort()
+##        scfi.append(fij)
+##    return scfi
+
+#+++++++++++++++ end SCC ++++++++++++++++++++++++++++++++++++
+
+def get_ctrl_data(gp,fi,counts=False):
+    """ a control signal is one that is a common input to a non-trivial group"
+     and a data signal i ""n input that is not common"""
+    Lg = [i for i in range(len(gp)) if len(gp[i]) > 7]
+##    Lg.sort()
+    print 'non-trivial groups/widths: ',[[Lg[i],len(gp[Lg[i]])] for i in range(len(Lg))]
+##    ct = [] #list of common fanins for non-trivial groups
+    ct = []
+    dt = [] #will become group fanins
+    cnt = []
+    for j in Lg:
+        gpj=gp[j] #list of signals in group j
+        width = len(gpj)
+        met1 = set([]) #signals that have been seen once.
+        cnts = []
+        for i in range(len(gpj)):
+            fig=fi[gpj[i]]
+            for k in fig:
+                if k in met1:
+                    met1.remove(k)
+                else:
+                    met1.add(k)             
+            cnts = cnts + fig
+        gmet1 = lim_met1(met1,Lg,gp)
+        dt.append(gmet1) 
+        cts = count_reps(cnts)
+        cts = [cts[i][1] for i in range(len(cts))] #just keep frequency
+        cnt.append(cts)
+    return ct,dt,cnt #leave ct empty
+
+def lim_met1(m1,L,gp):
+    """ m1 is a list of signals that fanout to exactly 1 of gpj
+        L is a list of groups of length > 7
+        want to find groups > 7 that have all of its signals among m1
+    """
+    res = []
+    for i in L:
+        gpLi = gp[i] #list of signals in i th group
+        allin = True
+        for j in gpLi:
+            if not j in m1:
+                allin = False
+                break
+        if allin:
+            res.append(i)
+    return res
+                
+
+def count_reps(y):
+    x=list(y)
+    x.sort()
+    last = -10000000
+    x.append(-1000000)
+    k = 0
+    cts = []
+    for i in range(len(x)):
+        if x[i] == last:
+            k = k+1
+        else:
+            cts.append([last,k])
+            k=1
+            last = x[i]
+    return cts[1:]
+
+
+#def group_inputs():
+    """ want to gorup inputs into control and data. A data group has
+    to fan out to nontrivial groups output groups where each bit
+    (or pair or triple) goes
+    to a different member of an output group. For each output group
+    it fans out to, this has to old. We assume that all inputs have
+    been classified into control or data. If an input looks like
+    a control going to one group and data going to another, it
+    should be classified as control or maybe just nothing. 
+    """
+    
+def gp_fan(gp,fan,ALL):
+    """ get the immediate (gp) fanins of the gp's in terms of gp's """
+    global L2
+    if len(gp) < 2:
+        print "single node group  for entire graph"
+        return [[]]
+    gp_map = get_map(gp)
+    print 'gp_map done'
+    assert not -1 in gp_map, '-1 at location %d'%gp_map.index(-1)
+    gpfan = []
+    L2 = set([i for i in range(len(gp)) if len(gp[i]) > 1])
+    for j in range(len(gp)): # jth scc
+        fanj = get_gpfan(gp[j],fan,gp_map,ALL) #returns a set
+        fanj = list(fanj)
+        fanj.sort()
+        gpfan.append(fanj)
+    return gpfan
+
+
+def get_gpfan(gpj,fan,gp_map,ALL=False):
+    """ get set of immediate gp fans (in or out) of jth gp """
+    fanj = set([])
+##    print gpj
+    if ALL:
+        fanj = L2 #non-trivial groups
+    for k in gpj:
+        if not k in L2:
+            return set([])
+        fanjk = fan[k] # immediate fanins of kth element of jth gp
+        fanjk.sort()
+        mfanjk = [gp_map[n] for n in fanjk if n > -1]
+        # mfanjk is immediate gp fanins of signal k excluding PIs
+        # choose between at least one or all
+        if ALL:
+            fanj = fanj & set(mfanjk)
+        else:
+            fanj = fanj | set(mfanjk)
+    return fanj
+
+def group_pis(isos2,fi):
+    L2 = [i for i in range(len(isos2)) if len(isos2[i]) > 7]
+    res = []
+    for i in L2:
+        gp = isos2[i] #ith iso group
+##        fi0 = fi[gp[0]] # fanin of first member of isos2[i]
+##        pi0 = [fi0[k] for k in range(len(fi0)) if fi0[k] < 0] #keep only pis
+        fig = [] #initialize
+        for j in gp:
+            fij = fi[j] # fanin of j th member of isos2[i]
+            fij = [fij[k] for k in range(len(fij)) if fij[k] < 0]
+            fig = fig + fij
+##            print fig
+            #want to keep only pis that fanout to all the gp
+##        print fig
+        res.append(list(fig))
+    # now sort into unique disjoint groups.
+    # If one intersects with another, replace by both interesection and
+    # add differences
+##    ffg = refine(res)
+    return res
+
+def refine(fig):
+##    L = [set(fig[i]) for i in range(len(fig))]
+    LL = [[len(fig[i]), fig[i]] for i in range(len(fig))]
+    LL.sort()
+    L = [set(LL[i][1]) for i in range(len(LL))]
+    L = uniquify_sets(L)
+    return L
+
+def uniquify_sets(L):
+    res = []
+    last = []
+    for i in range(len(L)):
+##        print last,L[i],res
+        if L[i] == last:
+            continue
+        else:
+            res.append(L[i])
+            last = L[i]
+    return res
+
+##    for 
+##    res = []
+##    while not L == []:
+##        s = L.pop()
+##        if L == []:
+##            res.push(s)
+##            return res
+##        ss = L.pop()
+##        if len(s&ss) == 0:
+##            
+        
+            
+
+            
+def begin(part=0,ALL=False):
+    global fi,fo,all_seen
+    global n_init_pis, n_init_latches,n_init_pos,lengths
+    n_init_pos = n_pos()
+    if n_latches() > 0:
+        abc('scl')
+        if n_ands() == 0:
+            print 'nil circuit after scl'
+            return ['nil']*13 #need to return 7 things
+    n_init_pos = n_pos()
+    n_init_latches = n_latches()
+    reparam()
+    n_init_pis = n_pis()
+    abc('comb')
+    abc('w %s_comb.aig'%f_name)
+    ps()
+    fi = fi_sig(n_init_pis,n_init_pos)
+    fo = fo_sig(fi)
+    isos1 = super_iso(part)
+    abc('w %s_comb_red.aig'%f_name)
+    abc('r %s_comb.aig'%f_name)
+    isos2, lengths = make_indep(isos1)
+##    lengths = [l_supp(isos2[i][0]) for i in range(len(isos2))]
+##    print_eq_counts(isos2)
+    isfi=gp_fan(isos2,fi,ALL)
+##    print 'done isfi'
+    isfo=gp_fan(isos2,fo,ALL)
+    c,d,cnt=get_ctrl_data(isos2,fi)
+    f_c = count_freq(cnt)
+    L2=[i for i in range(len(isos2)) if len(isos2[i]) > 7]
+    fcc = [[len(isos2[L2[i]]),f_c[i]] for i in range(len(f_c))]
+##    print 'fanin fanout for groups: \n',
+    io=[['%d: len=%d '%(i,len(isos2[L2[i]])),[len(c[i]),len(d[i])]] for i in range(len(c))]
+    return isos1,isos2,lengths,fi,fo,isfi,isfo,L2,c,d,cnt,fcc,io
+##    scc = get_SCCs()
+##    IG=group_iso_scc(isos2,scc)
+##    sccm = merge_ind_gps(IG,scc)
+##    sccmfi=scc_fi(sccm,fi)
+##    sccmfo=scc_fi(sccm,fo)
+##    fii=fi_scc(sccm,fi)
+##    return scc,isos,fi,fo,fii,sccm,sccmfi,sccmfo
+
+def count_freq(cnt):
+    res = []
+    for i in range(len(cnt)):
+        cti=cnt[i]
+        cti.sort()
+        res.append(count_fq(cti))
+    return res
+
+def make_indep(isos):
+    isc = []
+    lens = []
+    for j in range(len(isos)):
+        isosj = isos[j]
+        lnj = lengths[j]
+        if len(isosj) == 1:
+            isc.append(isosj)
+            lens.append(lnj)
+            continue
+        isji = split_i(isosj)
+        isc = isc + isji
+        lens = lens + [lnj]*len(isji)
+    return isc,lens
+
+def split_i(isj):
+    """ split the iso class isj into independent sets"""
+##    if len(isj)> 1:
+##        print len(isj)
+    isc = []
+    #create list of fan outs in isj for each member of isj
+    for i in isj:
+        isi =[]
+        for j in isj:
+            if not j == i:
+                if j in fo[i]:
+                    isi.append(j) # these are those flops that i fans out to
+        isc.append(isi)  #fan out lists of flops
+##    print isc
+    J = [] #first sub-group
+    #put in 0th group all those that do not have any fanout to any in isj
+    isc_J_list = set([]) # a list of sets
+##    print isc_J_list
+    for i in range(len(isc)):
+        if isc[i] == []:
+            J.append(isj[i])
+            isc_J_list = isc_J_list | set(isc[i]) #fan out set of 0th sub-group
+##            print isc_J_list
+##    print isc_J_list
+    if len(J) == len(isj):
+        return [isj]
+    isc_J_list = [isc_J_list]
+    J_list =  [J] #independent sub-groups of flops
+##    print J
+##    print len(J)
+    for i in range(len(isj)):
+        if isj[i] in J:
+            continue
+        J1 = isc[i] #set of fanout flops of isj[i]
+        new = True
+##        print J_list
+        for j in range(len(J_list)):
+            J2 = J_list[j] #list of flops
+            if  not disj(J1,J2) or isj[i] in isc_J_list[j]: #J1 has a fanout in J2 or v.v
+                continue
+            else:  #add isj[i] to jth sub-list
+                J_list[j].append(isj[i])
+                isc_J_list[j] = isc_J_list[j] | set(isc[i])
+                new = False
+                break
+        if new: #add a new independent sub-group
+            J_list.append([isj[i]])
+            isc_J_list.append(set(isc[i]))
+    if len(J_list)>1:
+        print [len(J_list[i]) for i in range(len(J_list))]
+##        print_eq_counts(J_list)
+    return J_list
+            
+def disj(J1,J2):
+    """ is set J1 in set J2"""
+    j1 = set(J1)
+    res = j1.isdisjoint(set(J2))
+    return res
+                
+def group_iso_scc(iso,scc):
+    """ combines iso and scc into word-level scc's
+    if two sccs have the same list of isos then scc's are combined
+    """
+    global fi,fo,all_seen
+    global n_init_pis, n_init_latches,n_init_pos
+    global sccfi,fi,level
+    N = len(scc)
+    scm = get_map(scc)
+    ism = get_map(iso)
+    iso_lists = []
+    for j in range(N):
+        sccj = scc[j]
+        isosj = [ism[i] for i in sccj] # the set of isos in sccj
+        isosj.sort() # now look for scc with same set of isos
+        iso_lists.append(isosj)
+    iso_group = [-1]*N
+    for j in range(N):
+        if iso_group[j] == -1:
+            iso_group[j]=j
+            for i in [k for k in range(N) if k > j]:
+                if iso_group[i] == -1:
+                    if iso_lists[j] == iso_lists[i]:
+                        iso_group[i]=j
+    #now all sccs have been assigned to an iso_scc. We want to merge
+    #all sccs with the same iso_group number.
+    mm = list(set(iso_group))
+    M = len(mm) # number of unique iso numbers
+    print ' No. of unique iso groups numbers', M
+    IG = [[] for i in range(M)]
+    n = 0
+    for i in range(N):
+        ii = mm.index(iso_group[i]) #ii th iso_group
+        IG[ii].append(i)
+    return IG
+##    return get_word_scc(IG,scc)
+
+def xloop(x, lo=0):
+    """ lo = 1 means return a loop, else just ondicate if a loop or not """
+    Lx = len(x)
+    ly = [0]*Lx
+    tbd = set(range(Lx))
+    lp = False
+    while not len(tbd) == 0:
+        i = tbd.pop()
+        if x[i] == []:
+            continue
+        for j in x[i]:
+            if ly[j] > ly[i]:
+                continue
+            ly[j] = ly[i]+1
+            if not x[j] == []:
+                tbd.add(j)
+            if not ly[j] < Lx+10:
+                lp = True
+                break
+    if lp == False or lo == 0:
+        return lp
+    else:
+        #gather loop
+        Lx = max(ly)
+        lp = []
+        while True:
+            lpi = [k for k in range(len(ly)) if ly[k] == Lx]
+            if len(lpi) == 0:
+                break
+            lp = lp + lpi
+            Lx = Lx-1
+    return lp
+
+
+
+def indep(x,k,l):
+    Lx = len(x)
+    ly = [0]*Lx #start at layer 0
+    tbd = set(k) #start at node k
+    done = set([])
+    while not len(tbd) == 0:
+        i = tbd.pop()
+        if i in done:
+            continue
+        done.add(i)
+        if l in x[i]:
+            return False
+        for j in x[i]: #j in fanin of i
+            if ly[j] <= ly[i]:
+                ly[j] = ly[i]+1
+                tbd.add(j)
+                if not ly[j] < Lx:
+                    return True
+##        tbd.add(x[i])
+    return True
+    
+    
+def get_wl_scc(iso,scc):
+    IG = group_iso_scc(iso,scc)
+    ind_IG = split_ind_gps(IG,scc)
+    wl_scc = merge_ind_gps(ind_IG,scc)
+    return wl_scc
+    
+
+def split_ind_gps(IG,scc):
+    global sccfi,fi,level
+    """ splits up iso_groups into independent groups to be merged """
+    fi = fi_sig(n_init_pis,n_init_pos)
+    sccfi=scc_fi(scc,fi)
+    if not xloop(sccfi):
+        return IG
+##    level=layer(sccfi)
+    IGi=list(IG)
+    IGi.reverse()
+    ind_IG = []
+    while len(IGi)>0:
+        I = IGi.pop() #split into independent sets
+        #(not in the fanin or fanout of each other)
+        Igs = split_iso(I) #split groups into subgroups
+        print [len(I),len(Igs)], #I is a single set of SCC's to be split
+        #IGs is a set of sets
+        print Igs
+        for i in len(range(Iga)):
+            ind_IG.append(Igs[i])
+    return ind_IG
+    
+    
+
+def merge_ind_gps(ind_IG,scc):
+    wlscc = []
+    for i in range(len(ind_IG)):
+        II = ind_IG[i] #ith group
+        l=[]
+        for j in II: #merge all the (independent) groups together 
+            l = l + scc[j]
+        l.sort() # not necessary really. Also sccs are disjoint so no repeats.
+        wlscc.append(l)
+    return wlscc # returns a new set of scc's
+
+def split_iso(I):
+    """ I is a set of scc's given by number"""
+    if len(I) == 1:
+        return [I] #the whole group
+    ind = [0]*len(I) #indicate if assigned yet
+    sps = []
+    while 0 in ind:
+        j = ind.index(0) # next scc not assigned
+        ind[j] = 1
+        # j th scc in I
+        lst=[I[j]]
+        for i in [i for i in range(len(ind)) if i > j]:
+            if ind[i] == 0:
+                if not indep(I[i],I[j]):
+                    continue
+                else:
+                    lst.append(I[i])
+                    ind[i] = 1 #now seen and assigned
+        sps.append(lst)
+    return sps # a set of sets
+
+def indep(s1,s2):
+    """ returns True if  scc s1 not in tfi scc s2 or vice versa
+    """
+    global fi, sccfi, level
+    # can't use level
+    if level[s1] == level[s2]:                         
+        return True
+    if level[s1]<level[s2]: #swap
+        s=s1
+        s1=s2
+        s2=s
+    tbt=set([s1]) #initialize
+    done = set([]) #sscc's already traced.
+    while len(tbt)>0:
+        i = tbt.pop()
+        if i in done:
+            continue
+        done.add(i)
+        sci = sccfi[i]
+        if s2 in sci:
+            return False
+        tbt = tbt | set(sci)
+    return True
+        
+
+
+#+++++++++++++++++ start iso +++++++++++++++++++++++++++++++
+
 def merge_eqs(eql,eqh):
+    """ eql is a set of old eq_classes and eqh is a set of newly found ones in terms of
+    the old classes. we want to merge old classes to get a new smaller set of classses.
+    As merge_eqs is the aig containing only the representatives shrinks because iso does this.
+    """
     res = []
     for k in range(len(eqh)):
         resk = []
@@ -8360,54 +9159,195 @@ def merge_eqs(eql,eqh):
 ##    print [len(res[i]) for i in range(len(res))]
     return res
 
+
+
 def get_supp(cl=[]):
     """ gets the union of the supports of a single isomorphic class."""
     sup_cl = []
     npi = n_init_pis #pis are CIs which are PIs,FF
+    npo = n_init_po
+##    s0 = [0]*n_pis()
     for i in range(len(cl)):
+##        s=list(s0)
         #i is a flop number = #po + #FF[i]
         supi = co_supp(cl[i])
-        supi = [supi[j]-npi for j in range(len(supi))] #shift so flops start at 0
-        sup_cl= sup_cl + supi
-    sup_cl.sort()   # sorted so can tell easily tell number of times a signal is repeated 
+##        for j in range(len(supi)):
+##            s[supi[j]]=1
+##        supi=[]
+        spi = []
+        for j in supi: #need to shift regs by +n_init_pos
+            if j < npi:
+                spi.append(j-npi) #shift so that primary inputs are negative.
+            else:
+                spi.append(j-npi+npo) #leave space for initial pos so reg input and output numbers are the same        sup_cl= sup_cl + supi
     return sup_cl
 
+#_____________________________
+
+def get_mapped_fos(eq):
+    """ get the fanouts of each comb PO in terms of group numbers"""
+    s2g = get_po_map(eq)
+    fo2g = []
+    for i in range(len(fo)):
+        foi = fo[i]
+        foi2g = [s2g[j] for j in foi]
+        foi2g = list(set(foi2g))
+        foi2g.sort()
+        fo2g.append(foi2g)
+    return fo2g
+
+
+def get_po_map(eq):
+    """ get the mapping from signal to group"""
+    s2g = [-1]*(n_init_pos+n_init_latches)
+    for i in range(len(eq)):
+        eqi = eq[i]
+        for j in eqi:
+            s2g[j]=i
+    return s2g
+
+def fodj(cl,fo2g):
+    """ partition eq iso class cl into disjoint fanout groups """
+    dj_fo_gps = []
+    J = []
+    for i in cl:
+##        print '\nnewi = %d'%i,
+        foi = set(fo2g[i])
+        Ji = set([i])
+        if dj_fo_gps == []:
+            dj_fo_gps.append(foi)
+            J.append(Ji)
+            continue
+        j0 = -1
+        for j in range(len(dj_fo_gps)):
+##            print j,
+            gj = dj_fo_gps[j]
+            Jj = J[j]
+            if not len(gj&foi) == 0: #not disjoint so merge
+                if j0 == -1: #first time non-disjoint group found
+                    j0 = j
+                else: #more than 1 intersections
+                    dj_fo_gps[j] = set([]) #get rid of jth set
+                    J[j]=set([])
+                foi = foi|gj # replace by union
+                Ji = Ji | Jj
+        if j0 == -1: # found new disjoint group
+            dj_fo_gps.append(foi)
+            J.append(Ji)
+        else: #replace first group that intersected.
+            dj_fo_gps[j0] = foi
+            J[j0] = Ji #put i in j0 group
+    res = []
+    for i in range(len(J)): #eliminate null sets
+        if not J[i] == set([]):
+            res.append(list(J[i])) #convert from set to list
+    return res
+
+def part_eq(eq,fo2g):
+    """ create new iso groups by partitioning each into disjoint fanout groups"""
+    global lengths
+    eq_new = []
+    lths = []
+    for i in range(len(eq)):
+        split = fodj(eq[i],fo2g)
+        for j in range(len(split)):
+            eq_new.append(split[j])
+            lths.append(lengths[i]) #support is unchanged
+    lengths = lths
+##    pr_sort(lengths)
+    return eq_new
+
+def pr_sort(L):
+    ll=list(set(L))
+    ll.sort()
+    print ll
+
+def part_eq_iter(eq):
+    """ iteration the partitioning because fanout groups change."""
+    global n_init_pis, n_init_latches,n_init_pos,lengths
+##    ps()
+##    abc('r %s_red.aig'%f_name)
+##    n_init_pis = n_pis()
+##    n_init_pos = n_pos()
+##    n_init_latches = n_latches()
+##    abc('r %s_comb_red.aig'%f_name)
+##    ps()
+    eq_new = list(eq)
+    lengths = [l_supp(eq[i][0]) for i in range(len(eq))]
+##    pr_sort(lengths)
+    wt_old = print_eq_counts(eq,1)
+##    fos = fo_sig()
+    while True:
+        fo2g = get_mapped_fos(eq_new)
+        eq_new = part_eq(eq_new,fo2g)
+        wt = print_eq_counts(eq_new,0)
+        if wt == wt_old:
+            break
+        wt_old = wt
+    wt = print_eq_counts(eq_new,1)
+    return eq_new
+
+def print_eq_counts(eq,p=1):
+    """ prints out the lengths of eq and their frequency"""
+    global lengths
+    L=[[len(eq[i]),lengths[i]] for i in range(len(eq))]
+    L.sort()
+    wt = print_counts(L,p)
+    return wt
+
+def print_counts(L,p=1):
+    n_old = L[0][0]
+    R=[]
+    s = 0
+    wt = 0
+    sups= []
+    for i in range(len(L)):
+        n = L[i][0]
+        if n == n_old:
+            s = s+1 # count number of iso groups of same width
+            sups.append(L[i][1])
+        else:
+            sups = list(set(sups))
+            sups.sort()
+            wt = wt + s*(n_old -1)
+            R.append('[%d]*%d(%s)'%(n_old,s,prpr(sups)))
+            n_old = n
+            s=1
+            sups = [L[i][1]]
+    wt = wt + s*(n_old -1)
+    sups = list(set(sups))
+    sups.sort()
+    R.append('[%d]*%d(%s)'%(n_old,s,prpr(sups)))
+    if p:
+        print '\n',R
+        print 'iso weight, efficiency = %d, %.2f '%(wt,float(wt)/float(n_init_pos+n_init_latches))
+    else:
+        print wt,
+    return wt
+
+#__________________________________
+        
+
+
 def get_class_supp(eq=[]):
-    """ e is a set of isomorphic classes. Computes the support of each iso class.
+    """ eq is a set of isomorphic classes. Computes the support of each iso class.
     Repeated supports indicate that common signals appear in the supports of a
     class. input numbering is PIs first, then flops.
-    """ 
+    """
+    abc('w %s_comb_red.aig'%f_name) #this needs the original aig
+    abc('r %s_comb.aig'%f_name)
     sg = []
     for i in range(len(eq)):
         eis = get_supp(eq[i]) #get the support of the ith iso class. This includes
-            #PIs whic have negative numbers
-        if eis == None:
-            print i,eq[i],eis
+            #PIs which have negative numbers
+        if eis == None or eis == []:
+            print 'WARNING: eq_group %d has no support'%i
         sg.append(eis)
+##    abc('w %s_comb.aig'%f_name)
+    abc('r %s_comb_red.aig'%f_name)
     return sg
 
-def fi_groups(sg=[],eq=[]):
-    """ sg is the supps of each iso class. eq are the iso classes
-    This code converts the inputs into iso-class inputs, but leaves the PIs (negative #)
-    untouched. Note that each PO is part of some iso group. """
-    gpf = get_gpf(eq) #assigns group number to each PO and flop
-    fi = []
-    for j in range(len(eq)):
-        sgj = sg[j] #supp of group j
-        mask = [sgj[i] > -1 for i in range(len(sgj))]
-        ind = len(mask)+1
-        if True in mask:
-            ind = mask.index(True)#finds the first flop
-        inps = sgj[:ind] #inputs
-        inps = list(set(inps))
-        flops = sgj[ind:] #flops of supports of iso-group j
-        sgm = [gpf[flops[i]] for i in range(len(flops))] #map into flop groups
-##        sgm.sort()
-        sgm = list(set(sgm)) #get rid of duplicates and sort
-        sgm = inps+sgm
-##        sgm.sort()
-        fi.append(sgm)
-    return fi
+
 
 def check_fifo(fi,fo):
     for i in range(len(fi)):
@@ -8421,52 +9361,7 @@ def check_fifo(fi,fo):
         for j in foi: #i->j
             assert i in fi[j], 'fanout discrepancy (%d,%d)'%(i,j) #j is a fanin of i
             #i->j
-
-def get_gpf(eq = []):
-    """ assigns group number to each PO and flop"""
-    gpf = [-1 for i in range(n_init_pos+n_init_latches)] #initialize to all -1
-    for j in range(len(eq)):
-        eqj = eq[j]  #jth iso class
-        for i in range(len(eqj)):
-            gpf[eqj[i]] = j
-    assert not -1 in gpf, '-1 in gpf'
-    return gpf
-
-def fo_groups(fi=[]):
-    """ get the fanout groups from the fanin groups"""
-    fo = [[] for i in range(len(fi))]
-    for i in range(len(fi)):
-        fii = fi[i] #ith fanin group
-        for j in range(len(fii)):
-            if fii[j]> -1: # no a PI
-                fo[fii[j]].append(i) # i is a fanout of fii[j]
-    return fo
-        
-def print_gp(fo,fi=[]):
-    """ prints classes with >1 members"""
-    if fi == []:
-        for i in range(len(fo)):
-            if len(fo[i]) > 1:
-                print '\n%d: '%i,fo[i]
-    else:
-        for i in range(len(fo)):
-            if len(fo[i]) >1:
-                print '\n%d: '%i,fi[i]
-                print fo[i]
-
-def count_rep(z):
-    """ x is a sorted list with repeats. returns a list of [value, count]
-    where count is the number of times value is repeated in the list"""
-    res = []
-    s = 0
-    for i in range(len(z)-1):
-        if not z[i] == z[i+1]:
-            v = [z[i],s+1]
-            res.append(v)
-            s = 0
-        else:
-            s=s+1
-    return res
+    return 'OK'
 
 """ remember to have Alan create a command that makes each flop input a
 PO. We want to try to prove some flop inputs are equal. need to miter pairs
@@ -8477,27 +9372,19 @@ them equivalent by superprove.
 """            
 
 def get_iso_classes():
-    global n_init_pis, n_init_latches,n_init_pos
-    n_init_pis = n_pis()
-    n_init_pos = n_pos()
-    if n_latches() > 0:
-        abc('scl')
-        if n_ands() == 0:
-            print 'nil circuit after scl'
-            return 'nil'
-##    dc2_iter()
-        n_init_latches = n_latches()
-    if n_latches() > 0:
-        abc('comb')
-    abc('w %s_comb.aig'%f_name)
-    dc2_iter()
-##    syn2_iter()
-##    abc('dc2')
-##    abc('syn2') ??
-    ps()
+    global n_init_pis, n_init_latches,n_init_pos,lengths,orig_supp
+    orig_supp = [l_supp(i) for i in range(n_pos())]
     if not iso():
-        return 'none found'
+        return 'nil'
     eq = eq_classes()
+    print 'number of POs: ',
+    print len(orig_supp),n_pos()
+##    print n_pos()
+    abc('&get;&isonpn;&put')
+##    ps()
+    eq = merge_eqs(eq,eq_classes())
+    print 'number of POs after isonpn: ',
+    print n_pos()
     while True:
 ##        dc2_iter()
 ##        abc('dc2')
@@ -8512,20 +9399,329 @@ def get_iso_classes():
             if not iso():
                 break
             eq = merge_eqs(eq,eq_classes())
-            
-    print 'iso class sizes: ',
-    print [len(eq[i]) for i in range(len(eq))]
-    abc('r %s_comb.aig'%f_name)
+##    lengths = [orig_supp[eq[i][0]] for i in range(len(eq))]
+    print 'number of POs after syn2 fraig iteration: ',
+    print n_pos()
+##    wt=print_eq_counts(eq,1)
+    abc('&get;&isonpn;&put')
+    eq = merge_eqs(eq,eq_classes())
+    print 'number of POs after isonpn: ',
+    print n_pos()
+    lengths = [orig_supp[eq[i][0]] for i in range(len(eq))]
+    print '[iso class width]*frequency(min support,max support): ',
+    wt=print_eq_counts(eq,0)
     return eq
-        
-def find_common_fo(fi,fo):
-    res = []
-    for i in range(len(fo)):
-        foi = fo[i]
-        for j in range(len(fo))[i+1:]:
-            if fo[j] == foi:
-                res.append([i,j])
+
+def l_supp(j):
+    cs = co_supp(j)
+    res = 0
+    if not cs == None:
+        res = len(cs)
     return res
+
+            
+def super_iso(part = 0):
+    global n_init_pis, n_init_latches,n_init_pos,lengths,orig_supp
+##    abc('w %s_initial_iso.aig'%f_name)
+    print 'initial n_pos: ',n_pos()
+    eq = get_iso_classes()
+    if  eq == 'nil':
+##        print eq
+        return 'nil'
+##    print 'n_pos after get_iso_classes: ',n_pos()
+    lengths = [orig_supp[eq[i][0]] for i in range(len(eq))]
+##    pr_sort(lengths)
+##    if part:
+##        eq = part_eq_iter(eq)
+    return eq
+
+##def get_chains(scc,fi):
+##    scc_map = get_scmap(scc)
+##    mscc = range(n_init_pos)+[i for i in range(len(scc)) if len(scc[i]) > 1] #sccs with multiple nodes.
+####    print len(mscc)
+##    fim = []
+##    d = dict([])
+##    seen = set([])
+##    for j in mscc:
+##        fij = list(get_scfi(j,scc,fi,scc_map)) #scc fanin to scc j in mscc
+####        print '\n',len(fij)
+##        fijs = set([fij[k] for k in range(len(fij)) if fij[k] not in mscc])#keep only singleton fanin scc's
+####        print len(fijs)
+##        fijm = set([fij[k] for k in range(len(fij)) if fij[k] in mscc]) #terminal multiple scc
+####        print len(fijm)
+####        seen = set([])
+##        while len(fijs) > 0:
+##            
+##                
+##            m = fijs.pop()
+##            if m in d:
+##                
+##            elif m in seen:
+##                continue
+##            seen.add(m)
+####            print m,
+##            fij = list(get_scfi(m,scc,fi,scc_map))
+####            print len(fij),
+##            for k in range(len(fij)):
+##                if fij[k] in seen:
+##                    continue
+##                if fij[k] not in mscc:
+##                    fijs.add(fij[k])
+##                else:
+##                    fijm.add(fij[k])
+####        print 'j = %d'%j
+##        print 'terminals for %d: '%j,list(fijm)
+##        fim.append([j,list(fijm)])
+##    return fim
+
+
+
+##def tfi(i):
+##    """ 0 means not seen, 1 means seen but not traced, 2 means already traced"""
+##    global fi,fo,all_seen
+##    tfii= [0]*n_pos()
+##    tfii[i] = 1
+##    while True:
+##        if 1 not in tfii:
+##            break
+##        x = tfii.index(1) #get next one to trace
+##        f = fi[x]
+##        tfii[x] = 2 #set it tp 2 to indicated it was traced
+##        for j in f:
+##            if j < 0:
+##                continue
+##            if (not j in all_seen) and tfii[j] == 0: #eliminates any scc found in any fanin.
+##                tfii[j] = 1 #needs to be traced later
+##    return tfii
+
+
+##def tfo(i):
+##    """ 0 means not seen, 1 means seen but not traced, 2 means already traced"""
+##    global fi,fo,all_seen
+##    tfoi = [0]*n_pos()
+##    tfoi[i] = 1
+##    while True:
+##        if 1 not in tfoi:
+##            break
+##        x = tfoi.index(1) #get next one to trace
+##        f = fo[x]
+##        tfoi[x] = 2 #set it up so 2  indicates it was traced
+##        for j in f: #j in the fanout of x
+##            if (not j in all_seen) and tfoi[j] == 0: # eliminates any scc found in any fanout.
+##                tfoi[j] = 1 #needs to be traced later
+##    return tfoi
+
+
+##def get_supp_old(cl=[]):
+##    """ gets the union of the supports of a single isomorphic class."""
+##    sup_cl = []
+##    npi = n_init_pis #pis are CIs which are PIs,FF
+##    for i in range(len(cl)):
+##        #i is a flop number = #po + #FF[i]
+##        supi = co_supp(cl[i])
+##        supi = [supi[j]-npi for j in range(len(supi))] #shift so flops start at 0
+##        sup_cl= sup_cl + supi
+##    sup_cl.sort()   # sorted so can tell easily tell number of times a signal is repeated 
+##    return sup_cl
+
+##def fi_groups(sg=[],eq=[]):
+##    """ sg is the supps of each iso class. eq are the iso classes
+##    This code converts the inputs into iso-class inputs, but leaves the PIs (negative #)
+##    untouched. Note that each PO is part of some iso group. """
+##    gpf = get_gpf(eq) #assigns group number to each PO and flop
+##    fi = []
+##    for j in range(len(eq)):
+##        sgj = sg[j] #supp of group j
+##        mask = [sgj[i] > -1 for i in range(len(sgj))]
+##        ind = len(mask)+1
+##        if True in mask:
+##            ind = mask.index(True)#finds the first flop
+##        inps = sgj[:ind] #inputs
+##        inps = list(set(inps))
+##        flops = sgj[ind:] #flops of supports of iso-group j
+##        sgm = [gpf[flops[i]] for i in range(len(flops))] #map into flop groups
+####        sgm.sort()
+##        sgm = list(set(sgm)) #get rid of duplicates and sort
+##        sgm = inps+sgm
+##        sgm.sort()
+##        fi.append(sgm)
+##    return fi
+##
+
+
+##def get_gpf(eq = []):
+##    """ assigns group number to each PO and flop"""
+##    gpf = [-1 for i in range(n_init_pos+n_init_latches)] #initialize to all -1
+##    for j in range(len(eq)):
+##        eqj = eq[j]  #jth iso class
+##        for i in range(len(eqj)):
+##            gpf[eqj[i]] = j
+##    assert not -1 in gpf, '-1 in gpf'
+##    return gpf
+##
+##def fo_groups(fi=[]):
+##    """ get the fanout groups from the fanin groups"""
+##    fo = [[] for i in range(len(fi))]
+##    for i in range(len(fi)):
+##        fii = fi[i] #ith fanin group
+##        for j in range(len(fii)):
+##            if fii[j]> -1: # no a PI
+##                fo[fii[j]].append(i) # i is a fanout of fii[j]
+##    return fo
+##        
+##def print_gp(fo,fi=[]):
+##    """ prints classes with >1 members"""
+##    if fi == []:
+##        for i in range(len(fo)):
+##            if len(fo[i]) > 1:
+##                print '\n%d: '%i,fo[i]
+##    else:
+##        for i in range(len(fo)):
+##            if len(fo[i]) >1:
+##                print '\n%d: '%i,fi[i]
+##                print fo[i]
+##
+def count_fq(zz):
+    """ x is a sorted list with repeats. returns a list of [count,value]
+    where count is the number of times value is repeated in the list"""
+    res = []
+    s = 0
+    z = list(zz)
+    z.append(-100000)
+    for i in range(len(z)-1):
+        if not z[i] == z[i+1]:
+            v = [s+1,z[i]]
+            res.append(v)
+            s = 0
+        else:
+            s=s+1
+    return res
+
+
+
+##def find_common_fo(fi,fo):
+##    res = []
+##    for i in range(len(fo)):
+##        leni=len(fi[i])
+##        for j in range(len(fo))[i+1:]:
+##            if leni == len(fi[j]):
+##                res.append([i,j])
+##    return res
+##        
+##def find_common_fo_old(fi,fo):
+##    seen = []
+##    res = []
+##    for i in range(len(fo)):
+##        if i in seen:
+##            continue
+##        foi = fo[i]
+##        leni=len(fi[i])
+##        n=0
+##        for j in range(len(fo))[i+1:]:
+##            if fo[j] == foi and leni == len(fi[j]):
+####                if n == 0:
+####                    print '\n',fi[i]
+####                print fi[j]
+##                n=1
+##                seen.append(j)
+##                res.append([i,j])
+##    return res
+##
+##def try_match(co,eq):
+##    pairs = []
+##    for i in range(len(co)):
+##        coi=co[i]
+##        i1=False
+##        if is_func_iso(coi[0],coi[1]):
+##            i1 = True
+##            print 'if_is_iso wins'
+####            print coi, 'merging groups of sizes %d and %d'%(len(eq[coi[0]]),len(eq[coi[1]]))
+##            pairs.append(coi)
+##        if is_func_iso2(coi[0],coi[1]):
+##            print 'if_is_iso2 wins'
+##            if not i1:
+##                pairs.append(coi)
+##        return pairs
+
+
+##def try_pairs(eq):
+##    pair_proved = 0
+##    while True:
+##        sg = get_class_supp(eq) #needs the original comb aig. Restores reduced aig
+##        print 'sg done',
+####        print eq
+##        fi = fi_groups(sg,eq)
+##        print 'fi done',
+##        fo = fo_groups(fi)
+##        print 'fo done'
+##        co = find_common_fo(fi,fo)
+##        if co == []:
+##            print 'no candidate pairs found'
+##            break
+##        print 'candidate pairs found: %d'%len(co)
+####        print 'co done'
+##        pairs = try_match(co,eq)
+####        print 'pairs done'
+##        print 'pairs proved: ',len(pairs)
+##        if pairs == []:
+##            if not pair_proved:
+##                return eq
+##            else:
+##                break
+##        else:
+##            pair_proved = 1
+##        #need to remove non representative POs
+##        J = [pairs[i][1] for i in range(len(pairs))]
+####            print J
+##        remove(J)
+##        #now merge eq groups
+##        eq_new = []
+##        pi_rep = -1
+##        eqn = []
+##        for i in range(len(pairs)):
+##            pi = pairs[i]
+##            if not pi[0] == pi_rep: #start new group
+##                if not eqn == []:
+##                    eq_new.append(eqn) #save old group
+##                pi_rep = pi[0] #start a new iso group
+##                eqn = pi
+##            else:
+##                eqn.append(pi[1])
+##        if not eqn == []:
+##            eq_new.append(eqn) #save last one
+####            print 'eq_new:',eq_new
+##        if not eq_new == []:
+##            eq = mergeq(eq,eq_new)
+####            print_eq_counts(eq)
+##        else:
+##            break
+##    print 'iso class sizes and frequencies: ',
+##    print_eq_counts(eq)
+##    return eq
+
+    
+        
+##def mergeq(eq,eqn):
+##    """ combine each eq group in eqn into a representative delete non-reps"""
+##    res = list(eq)
+##    print eqn
+##    for i in range(len(eqn)):
+##        eqni = eqn[i]
+####        print eqni
+##        resi = []
+##        j0 = eqni[0] #representative
+####        print res[j0]
+##        for j in range(len(eqni)):
+##            resi = resi+eq[eqni[j]] #merging groups
+##            res[eqni[j]] = [] #deleting
+##        res[j0] = resi #replacing the representative
+####        print res[j0]
+##    R = []
+##    for i in range(len(eq)): #eliminate null groups
+##        if not res[i] == []:
+##            R.append(res[i])
+##    return R
+#____________end iso ____________________
 
 def factor_nsf():
     abc('short_name')
@@ -8886,9 +10082,10 @@ def dc2_iter(th=.999):
 ##    return
     abc('st')
     tm = time.time()
+    abc('&get')
     while True:
         na=n_ands()
-        abc('dc2')
+        abc('&dc2;&put')
         print n_ands(),
 ##        print nl(),
         if n_ands() > th*na:
@@ -9902,7 +11099,7 @@ def monitor_and_prove():
     """
     global ifbip
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
-    #write the current aig as vabs.aig so it will be regularly verified at the beginning.
+    #write the current aig as vabs.aig so it will be regularly verified at the begining.
     name = '%s_vabs.aig'%f_name
     if os.access('%s'%name,os.R_OK): #make it so that there is no initial abstraction
         os.remove('%s'%name)
@@ -10373,9 +11570,6 @@ def sets_sop(sts):
         res = res + [set_str(sts[j])]
     return res
         
-        
-        
-
 
 def tt(sp): #sop_tt
     """converts a sop into a tt"""
@@ -10538,7 +11732,7 @@ def p_red(c):
     return t
 
 def syn2():
-    abc('&get;&dch;&dc2;&put')
+    abc('&get;&syn2;&put')
     ps()
 
 def syn5():
@@ -10582,6 +11776,14 @@ def get_on_off(name='temp'):
 ##    print lit(r4)
 ##    return res1,res0
 
+def get_tts():
+    abc('w %s_iso_reduced')
+    abc('&get')
+    tts = []
+    for i in range(n_pos()):
+        abc('&put;cone -O i;')
+        
+
                   
 def sparsify(name='test'):
     """ ABC reads in test.aig and extracts output O. Then samples its onset and
@@ -10620,14 +11822,16 @@ def sparsify(name='test'):
 def syn2_iter():
     best = n_ands()
     abc('w temp_best.aig')
+    abc('&get')
     while True:
-        syn2()
+        abc('&syn2;&put')
         if n_ands() < best:
-            abc('w temp_best.aig')
+            abc('&save')
             best = n_ands()
-            print best
+            print best,
         else:
-            abc('r temp_best.aig')
+            abc('&load')
+            print '\n'
             return
 
 def syn5_iter():
