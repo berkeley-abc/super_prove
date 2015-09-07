@@ -240,10 +240,6 @@ def super_prove():
 
 proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_cex=True)
 proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0)
-proof_command_wrapper(par.simple_bip,  'HWMCC13', '/simple_bip_aiger',  0)
-proof_command_wrapper(par.sst,  'HWMCC13', '/simple_sat_aiger',  0, write_cex=True)
-proof_command_wrapper(par.spd,  'HWMCC13', '/super_deep_aiger',  0, bmc_depth=True)
-proof_command_wrapper(par.mp,  'HWMCC13', '/multi_prove_aiger',  0, multi=True)
 
 def simple_liveness_prooffunc(aig_filename):
 
