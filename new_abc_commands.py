@@ -239,7 +239,7 @@ def super_prove():
     return par.sp(check_trace=True)
 
 proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_cex=True)
-proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0)
+proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0, write_cex=True)
 
 def simple_liveness_prooffunc(aig_filename):
 
