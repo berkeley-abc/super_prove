@@ -433,15 +433,15 @@ def set_engines(N=0):
     global reachs,pdrs,sims,intrps,bmcs,n_proc,abs_ratio,ifbip,bmcs1, if_no_bip, allpdrs,allbmcs
     bmcs1 = [9] #BMC3
     #for HWMCC we want to set N = 
-    N = 4
     if N == 0:
-        N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
+##        N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
+        N = 4
+        N = n_proc = 2*N
 ##        N = n_proc = 8 ### simulate 4 processors for HWMCC - turn this off a hwmcc.
     else:
         n_proc = N
 ##    print 'n_proc = %d'%n_proc
     #strategy is to use 2x number of processors 
-    N = n_proc = 2*N
     if N <= 1:
         reachs = [24]
         pdrs = [7]
@@ -463,7 +463,7 @@ def set_engines(N=0):
         if if_no_bip:
             allpdrs = pdrs = [7,19] #pdrm pdrmm
         bmcs = [9,30] #bmc3 bmc3 -S
-        intrps = [23] #unterp_m
+        intrps = [23] #interp_m
         sims = [26] #Rarity_sim
         slps = [18] #sleep
 # 0.PDR, 1.INTERPOLATION, 2.BMC, 3.SIMULATION,
