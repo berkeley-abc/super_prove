@@ -823,7 +823,7 @@ def set_max_bmc(b):
         report_bmc_depth(max_bmc)
 
 def report_bmc_depth(m):
-    return #for non hwmcc applications
+##    return #for non hwmcc applications
     print 'u%d'%m
 
 def print_circuit_stats():
