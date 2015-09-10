@@ -841,7 +841,7 @@ def print_circuit_stats():
     b = get_max_bmc()
     c = cex_frame()
     if b>= 0:
-        if c>=0:
+        if c>b:
             out ='PIs=%d,POs=%d,FF=%d,%s=%d,max depth=%d,CEX depth=%d'%(i,o,l,s,a,b,c)
         elif is_unsat():
             out = 'PIs=%d,POs=%d,FF=%d,%s=%d,max depth = infinity'%(i,o,l,s,a)
