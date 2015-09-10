@@ -2522,6 +2522,11 @@ def speculate(t=0):
 ##    report_bmc_depth(mx)
 ##    return mx
 
+def smpl():
+    b=bmc3(5)
+    get_bmc_depth()
+    simple()
+
 def simple(t=100000,no_simp=0,check_trace=True):
     y = time.time()
 ##    pre_simp()
@@ -4355,6 +4360,8 @@ def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
     print '\n               *** Executing super_prove ***'
     print '%s: '%f_name,
     ps()
+    b=bmc3(5)
+    get_bmc_depth()
     result = super_prove(n,t)
     print '%s is done and is %s'%(initial_f_name,result[0])
 ##    print 'sp: ',
