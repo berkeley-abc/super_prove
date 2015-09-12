@@ -789,10 +789,10 @@ def write_file(s):
     ps()
     abc('w '+ss)
 
-def get_max_bmc():
-    return get_bmc_depth()
+def get_max_bmc(chtr=False):
+    return get_bmc_depth(chtr)
 
-def get_bmc_depth():
+def get_bmc_depth(chtr=False):
     """ Finds the number of BMC frames that the latest operation has used. The operation could be BMC, reachability
     interpolation, abstract, speculate. max_bmc is continually increased. It reflects the maximum depth of any version of the circuit
     including g ones, for which it is known that there is not cex out to that depth."""
@@ -803,24 +803,26 @@ def get_bmc_depth():
     else:
         b = n_bmc_frames()
     if b > max_bmc:
-        set_max_bmc(b)
-        report_bmc_depth(max_bmc)
+        set_max_bmc(b,chtr)
+        if chtr:
+            report_bmc_depth(max_bmc)
     return max_bmc
 
 def null_status():
     """ resets the status to the default values but note that the &space is changed"""
     abc('&get;&put')
 
-def set_bmc_depth(b):
-    set_max_bmc(b)
+##def set_bmc_depth(b,chtr=False):
+##    set_max_bmc(b,chtr)
 
-def set_max_bmc(b):
+def set_max_bmc(b,chtr=False):
     """ Keeps increasing max_bmc which is the maximum number of time frames for
     which the current circuit is known to be UNSAT for"""
     global max_bmc
-    if b > max_bmc:
+    if b > max_bmc and chtr:
         max_bmc = b
         report_bmc_depth(max_bmc)
+    return max_bmc
 
 def report_bmc_depth(m):
 ##    return #for non hwmcc applications
@@ -838,7 +840,7 @@ def print_circuit_stats():
         a = n_nodes()
         s = 'Nodes'
 ##    b = max(max_bmc,bmc_depth()) # don't want to do this because bmc_depth can change max_bmc
-    b = get_max_bmc()
+    b = get_max_bmc(chtr=False)
     c = cex_frame()
     if b>= 0:
         if c>b:
@@ -1305,11 +1307,11 @@ def abstractb():
     if is_unsat():
         return Unsat
 ##    set_max_bmc(NBF)
-    NBF = get_bmc_depth()
+    NBF = get_bmc_depth(True)
     print 'Abstraction good to %d frames'%NBF
     #note when things are done in parallel, the &aig is not restored!!!
     abc('&r -s %s_greg.aig; &w initial_greg.aig; &abs_derive; &put; w initial_gabs.aig; w %s_gabs.aig'%(f_name,f_name))
-    set_max_bmc(NBF)
+    set_max_bmc(NBF,True)
     print 'Initial abstraction: ',
     ps()
     abc('w %s_init_abs.aig'%f_name)
@@ -1348,7 +1350,7 @@ def initial_abstract_old():
     set_globals()
     time = max(1,.1*G_T)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(get_bmc_depth())
+    set_max_bmc(get_bmc_depth(True),True)
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -1367,7 +1369,7 @@ def initial_abstract(t=100):
     time = max(1,.1*G_T)
     time = min(time,t)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(get_bmc_depth())
+    set_max_bmc(get_bmc_depth(True),True)
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -2522,10 +2524,15 @@ def speculate(t=0):
 ##    report_bmc_depth(mx)
 ##    return mx
 
-def smpl():
+def smpl(check_trace=True):
     b=bmc3(5)
-    get_bmc_depth()
-    simple()
+    get_bmc_depth(True)
+    if b == 'SAT' and check_trace:
+        unmap_cex()
+        report_cex(1)
+        return ['SAT']+['bmc3']
+    else:
+        return simple()
 
 def simple(t=100000,no_simp=0,check_trace=True):
     y = time.time()
@@ -3607,7 +3614,7 @@ def prove(a=0,abs_tried = False):
         """  
     global x_factor,xfi,f_name, last_verify_time,K_backup, t_init, sec_options, spec_found_cex
     spec_first = False
-    set_max_bmc(-1)
+    set_max_bmc(-1,True)
     abs_found_cex_after_spec = spec_found_cex_after_abs = False
     if not '_smp' in f_name: #if already simplified, then don't do again
         if a == 2 : #do quick simplification
@@ -4360,9 +4367,12 @@ def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
     print '\n               *** Executing super_prove ***'
     print '%s: '%f_name,
     ps()
-    b=bmc3(5)
-    get_bmc_depth()
-    result = super_prove(n,t)
+    b = bmc3(5)
+    get_bmc_depth(True)
+    if b == 'SAT':
+        result = ['SAT']+[['bmc3']]
+    else:
+        result = super_prove(n,t)
     print '%s is done and is %s'%(initial_f_name,result[0])
 ##    print 'sp: ',
 ##    print result
@@ -6017,7 +6027,7 @@ def super_prove(n=0,t=2001):
     if x_factor > 1:
         print 'x_factor = %f'%x_factor
         input_x_factor()
-    set_max_bmc(-1)
+    set_max_bmc(-1,True)
     x = time.time()
     add_trace('prove')
     result = prove(n)
@@ -6252,7 +6262,7 @@ def check_abs():
 
 def modify_methods(J,dec=0):
     """ adjusts the engines to reflect number of processors"""
-    N = get_bmc_depth()
+    N = get_bmc_depth(False)
     L = n_latches()
     I = n_real_inputs()
     npr = n_proc - dec
@@ -7635,7 +7645,7 @@ def bmc3as(t=0,start=0,C=0,H=0):
     print 'bmc3as(%.2f,%d): time = %.2f'%(t,start,(time.time()-t_init)),
     s = switch(status_get_vector())
     print sumsize(s),
-    D.append(get_max_bmc())
+    D.append(set_max_bmc(max_bmc,chtr=False))
     d = max(D)
     print ' max depth = %d'%d
     return d,s
@@ -7905,7 +7915,7 @@ def fork_break(funcs,mtds,BREAK='US'):
             status = Sat
             if M in methods:                
                 if methods.index(M) in exbmcs+allreachs+allpdrs+[1]: #set the known best depth so far. [1] is interp
-                    set_max_bmc(n_bmc_frames())
+                    set_max_bmc(n_bmc_frames(),True)
             last_cex = M
             print '%s: -- cex in %0.2f sec. at depth %d in output %d => '%(M,t,cex_frame(),cex_po()),
             cex_list = cex_list+[cex_get()] #accumulates multiple cex's and puts them on list.
@@ -10691,7 +10701,7 @@ def bip_abs(t=100):
     set_globals()
     time = max(1,.1*G_T)
     abc('&get;,bmc -vt=%f'%time)
-    set_max_bmc(get_bmc_depth())
+    set_max_bmc(get_bmc_depth(False))
     c = 2*G_C
     f = max(2*max_bmc,20)
     b = min(max(10,max_bmc),200)
@@ -10866,7 +10876,7 @@ def abstracta(if_bip=True):
 ##                return Undecided
                 continue
     read_abs_values()
-    set_max_bmc(abs_depth-1)
+    set_max_bmc(abs_depth-1,True)
     if  vta_term_by_time == 0 and if_bip == 0 and gabs: #vta timed out itself
         print 'Trying to verify final abstraction',
         ps()
@@ -10891,14 +10901,14 @@ def abstracta(if_bip=True):
             add_trace('UNSAT')
             return Unsat
     ##    set_max_bmc(NBF)
-        NBF = get_bmc_depth()
+        NBF = get_bmc_depth(True)
         print 'Abstraction good to %d frames'%max_bmc
         #note when things are done in parallel, the &aig is not restored!!!
         if if_bip:
             abc('&r -s %s_greg.aig; &w initial_greg.aig; &abs_derive; &put; w initial_gabs.aig; w %s_gabs.aig'%(f_name,f_name))
         else:
             run_command('&r -s %s_gla.aig; &w initial_gla.aig; &gla_derive; &put; w initial_gabs.aig; w %s_gabs.aig'%(f_name,f_name))
-        set_max_bmc(NBF)
+        set_max_bmc(NBF,True)
         print 'Initial abstraction: ',
         ps()
         abc('w %s_init_abs.aig'%f_name)
@@ -10936,7 +10946,7 @@ def abstracta(if_bip=True):
             result = simplify()
             assert result >= Unsat, 'simplify returned SAT'
             if result > Unsat: #test if abstraction is unsat
-                result = simple()# does simplification first
+                result = simple(check_trace=False)# does simplification first
                 res = result[0]
                 if res == 'UNSAT':
                     return Unsat
@@ -11140,7 +11150,7 @@ def monitor_and_prove():
             if i == 0: # read_and_sleep terminated
                 if res == False: #found new abstraction
                     read_abs_values()
-                    set_max_bmc(abs_depth-1)
+                    set_max_bmc(abs_depth-1,True)
                     time_abs_prev = time_abs
                     time_abs = time.time()
 ##                    print 'time between new abstractions = %0.2f'%(time_abs - time_abs_prev)
@@ -11177,7 +11187,7 @@ def monitor_and_prove():
                         return [Undecided_no_reduction]+['read_and_sleep']
                     if not mtds[i] == 'RareSim': #the other engines give a better estimate of true cex depth
                         read_abs_values()
-                        set_max_bmc(abs_depth-1)
+                        set_max_bmc(abs_depth-1,True)
                         cex_abs_depth = cex_frame()
                         write_abs_values()
 ####                    print '\nParallel %s found SAT on current abstr in frame %d\n'%(mtds[i],cex_frame())
@@ -11258,7 +11268,7 @@ def read_and_sleep(t=5):
                 run_command('w %s_gabs.aig'%f_name)
     ##            print '%s is removed'%name
                 read_abs_values()
-                set_max_bmc(abs_depth-1)
+                set_max_bmc(abs_depth-1,True)
                 time_abs_prev = time_abs
                 time_abs = time.time()
     ##            print 'abs values has been read'
