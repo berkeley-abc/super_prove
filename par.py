@@ -90,7 +90,7 @@ pairs = cex_list = []
 TERM = 'USL'
 ##last_gasp_time = 10000 -- controls BMC_VER_result time limit
 ##last_gasp_time = 500
-last_gasp_time = 3*3600 #set to conform to hwmcc15 for 3 hours
+last_gasp_time = 3600 #set to conform to hwmcc15 for 1 hours
 use_pms = True
 
 #gabs = False #use the gate refinement method after vta
@@ -269,7 +269,7 @@ def initialize():
     max_bmc = -1
     last_time = 0
 ##    last_gasp_time = 2001 #set to conform to hwmcc12
-    last_gasp_time = 3*3600 #set to conform to hwmcc15
+    last_gasp_time = 3600 #set to conform to hwmcc15
     j_last = 0
     seed = 113
     init_simp = 1
@@ -2088,9 +2088,13 @@ def speculate(t=0):
     res = fork_last(funcs,mtds) #break when last initial_speculate ends
     print 'init_spec return = ',
     print res
+    if res == None:
+        add_trace('de_speculate')
+        return Undecided_no_reduction
     if res[0] == 'UNSAT':
         return Unsat
-    if res[0] == 'UNDECIDED':
+    if res[0] == 'UNDECIDED' or res[0] == None:
+        add_trace('de_speculate')
         return Undecided_no_reduction # even one of the initial speculations too hard
     if res[1] in ['f','g','']:
         sec_options = res[1]
@@ -6161,6 +6165,27 @@ def iso(n=0):
     print 'Reduced n_pos from %d to %d'%(npos,n_pos())
     return True
 
+def isost(n=0):
+    if n_ands() > 1000000 and not n_latches() == 0:
+        print 'circuit too large - over 1000000 ANDS'
+        return False
+    if n_pos() < 2:
+        print 'no more than 1 output'
+        return False
+    npos=n_pos()
+    if n == 0:
+        abc('&get;&isost;&put')
+        if n_pos() == npos:
+##            print 'no reduction'
+            return False
+    else:
+        run_command('&get;&iso;&put')
+        if n_pos() == npos:
+##            print 'no reduction'
+            return False
+    print 'Reduced n_pos from %d to %d'%(npos,n_pos())
+    return True
+
 def check_iso(N):
     ans = get_large_po()
     if ans == -1:
@@ -8685,7 +8710,7 @@ def get_ctrl_data(gp,fi,counts=False):
      and a data signal i ""n input that is not common"""
     Lg = [i for i in range(len(gp)) if len(gp[i]) > 7]
 ##    Lg.sort()
-    print 'non-trivial groups/widths: ',[[Lg[i],len(gp[Lg[i]])] for i in range(len(Lg))]
+    print 'non-trivial widths/frequency: ',[[Lg[i],len(gp[Lg[i]])] for i in range(len(Lg))]
 ##    ct = [] #list of common fanins for non-trivial groups
     ct = []
     dt = [] #will become group fanins
@@ -8851,7 +8876,7 @@ def uniquify_sets(L):
             
 
             
-def begin(part=0,ALL=False):
+def begin(part=0,ALL=False,ifisost=True):
     global fi,fo,all_seen
     global n_init_pis, n_init_latches,n_init_pos,lengths
     n_init_pos = n_pos()
@@ -8869,7 +8894,7 @@ def begin(part=0,ALL=False):
     ps()
     fi = fi_sig(n_init_pis,n_init_pos)
     fo = fo_sig(fi)
-    isos1 = super_iso(part)
+    isos1 = super_iso(part,ifisost)
     abc('w %s_comb_red.aig'%f_name)
     abc('r %s_comb.aig'%f_name)
     isos2, lengths = make_indep(isos1)
@@ -8904,6 +8929,7 @@ def count_freq(cnt):
 def make_indep(isos):
     isc = []
     lens = []
+    print '\nsplitting iso classes into independent sets'
     for j in range(len(isos)):
         isosj = isos[j]
         lnj = lengths[j]
@@ -8914,6 +8940,7 @@ def make_indep(isos):
         isji = split_i(isosj)
         isc = isc + isji
         lens = lens + [lnj]*len(isji)
+    print '\n'
     return isc,lens
 
 def split_i(isj):
@@ -8965,7 +8992,7 @@ def split_i(isj):
             J_list.append([isj[i]])
             isc_J_list.append(set(isc[i]))
     if len(J_list)>1:
-        print [len(J_list[i]) for i in range(len(J_list))]
+        print [len(J_list[i]) for i in range(len(J_list))],
 ##        print_eq_counts(J_list)
     return J_list
             
@@ -9388,11 +9415,15 @@ them equivalent by superprove.
 
 """            
 
-def get_iso_classes():
+def get_iso_classes(n=0):
     global n_init_pis, n_init_latches,n_init_pos,lengths,orig_supp
     orig_supp = [l_supp(i) for i in range(n_pos())]
-    if not iso():
-        return 'nil'
+    if n == 0:
+        if not iso():
+            return 'nil'
+    else:
+        if not isost():
+            return 'nil'
     eq = eq_classes()
     print 'number of POs: ',
     print len(orig_supp),n_pos()
@@ -9407,15 +9438,23 @@ def get_iso_classes():
 ##        abc('dc2')
         abc('&get;&syn2;&put')
 ##        abc('fraig')
-        if iso():
-            eq = merge_eqs(eq,eq_classes())
-            continue
+        if n == 0:
+            if iso():
+                eq = merge_eqs(eq,eq_classes())
+                continue
         else:
-            print 'fraiging'
-            abc('&get;&fraig;&syn2;&put')
+            if isost():
+                eq = merge_eqs(eq,eq_classes())
+                continue
+        print 'fraiging'
+        abc('&get;&fraig;&syn2;&put')
+        if n == 0:
             if not iso():
                 break
-            eq = merge_eqs(eq,eq_classes())
+        else:
+            if not isost():
+                break
+        eq = merge_eqs(eq,eq_classes())
 ##    lengths = [orig_supp[eq[i][0]] for i in range(len(eq))]
     print 'number of POs after syn2 fraig iteration: ',
     print n_pos()
@@ -9437,11 +9476,11 @@ def l_supp(j):
     return res
 
             
-def super_iso(part = 0):
+def super_iso(part=0,ifisost=True):
     global n_init_pis, n_init_latches,n_init_pos,lengths,orig_supp
 ##    abc('w %s_initial_iso.aig'%f_name)
     print 'initial n_pos: ',n_pos()
-    eq = get_iso_classes()
+    eq = get_iso_classes(ifisost)
     if  eq == 'nil':
 ##        print eq
         return 'nil'
