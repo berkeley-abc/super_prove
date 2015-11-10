@@ -6,7 +6,6 @@ import sys
 import os
 import time
 import math
-import main
 import filecmp
 import random
 import operator

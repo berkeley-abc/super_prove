@@ -1,6 +1,6 @@
-python -c 'import new_abc_commands'
+python -c 'import super_prove.new_abc_commands'
 
-load_plugin /home/brayton/abc/aig/Python/avy_runner.py AVY
+load_plugin -p bip Bip
 
 # global parameters
 set check         # checks intermediate networks
