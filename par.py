@@ -89,7 +89,7 @@ pairs = cex_list = []
 TERM = 'USL'
 ##last_gasp_time = 10000 -- controls BMC_VER_result time limit
 ##last_gasp_time = 500
-last_gasp_time = 3600 #set to conform to hwmcc15 for 1 hours
+last_gasp_time = 1500 #set to conform to hwmcc15 for 1 hours
 use_pms = True
 
 #gabs = False #use the gate refinement method after vta
@@ -103,7 +103,7 @@ gla = True #use gla_abs instead of vta_abs
 abs_time = 150
 abs_time = 5000
 abs_time = 500
-abs_time = 300 #changed for hwmcc15
+abs_time = 200 #changed for hwmcc15
 abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
 ##total_spec_refine_time = 150
 total_spec_refine_time = 200 # changed for hwmcc15
@@ -268,7 +268,7 @@ def initialize():
     max_bmc = -1
     last_time = 0
 ##    last_gasp_time = 2001 #set to conform to hwmcc12
-    last_gasp_time = 3600 #set to conform to hwmcc15
+    last_gasp_time = 1500 #set to conform to hwmcc15
     j_last = 0
     seed = 113
     init_simp = 1
@@ -293,10 +293,10 @@ def initialize():
     abs_time = 100000 #let size terminate this.
     abs_time = 500
     abs_time = 150
-    abs_time = 300 #for hwmcc15
+    abs_time = 200 #for hwmcc15
     abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
 ##    total_spec_refine_time = 150 # timeout for speculation refinement
-    total_spec_refine_time = 300 # timeout for speculation refinement changed for hwmcc15
+    total_spec_refine_time = 200 # timeout for speculation refinement changed for hwmcc15
     abs_ratio = .5 
 ##    hist = []
     skip_spec = False
@@ -433,8 +433,8 @@ def set_engines(N=0):
     bmcs1 = [9] #BMC3
     #for HWMCC we want to set N = 
     if N == 0:
-##        N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
-        N = 4
+        N = n_proc = os.sysconf(os.sysconf_names["SC_NPROCESSORS_ONLN"])
+##        N = 4 # this was for hwmcc15
         N = n_proc = 2*N
 ##        N = n_proc = 8 ### simulate 4 processors for HWMCC - turn this off a hwmcc.
     else:
@@ -2903,10 +2903,11 @@ def check_sat(t=2001):
     if not n_latches() == 0:
         print 'circuit is not combinational'
         return Undecided
-##    print 'Circuit is combinational - checking with dsat'
+    print 'Circuit is combinational - checking with dsat, iprove, &splitprove'
     L = list_const_pos()
     if not count_less(L,0) == len(L):
         if 1 in L:
+            print "circuit has a constant 1 output"
             return Sat
         elif 0 in L and not -1 in L:
             return Unsat
@@ -3710,6 +3711,9 @@ def prove_part_1(frames_2=True):
 ##    ps()
     x_factor = xfi
     set_globals()
+    abc('&get;&scl;&syn2;&put')
+    print 'Initial quick simplified result: ',
+    ps()
     if n_latches() > 0:
 ##        ps()
         res = False
@@ -3722,6 +3726,7 @@ def prove_part_1(frames_2=True):
         print '\n***Running run_par_simplify with pre_simp'
         add_trace('run_par_simplify with pre_simp')
         result = run_par_simplify()
+        print 'run_par_simplify is done'
         status = result[0]
         method = result[1]
         if 'scorr' in method: #run_par_simplify must have proved something
@@ -3746,11 +3751,14 @@ def run_par_simplify():
     funcs = [eval('(pyabc_split.defer(pre_simp)())')]
     J = [35]+pdrs[:3]+bmcs[:3]+intrps[:1]+sims  # 35 is par_scorr
     J = modify_methods(J,1)
+    if n_latches() == 0:
+        J = []
 ##    J = J + bestintrps
     funcs = create_funcs(J,t)+ funcs #important that pre_simp goes last
     mtds =sublist(methods,J) + ['PRE_SIMP']
     print mtds
     i,result = fork_last(funcs,mtds)
+    print 'fork_last is done'
     status = get_status()
     if result < 3:
         return [result,mtds[i]]

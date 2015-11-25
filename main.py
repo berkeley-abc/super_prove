@@ -144,7 +144,7 @@ def list_aig(s=''):
         name = name1[:-4]
         if not s_in_s(s,name):
             continue
-##        print '%s '%name,
+        print '%s '%name,
         abc('r %s.aig'%name)
 ##        ps()
         result = result + [name1+': '+str((n_pis(),n_pos(),n_latches(),n_ands()))]
