@@ -64,7 +64,7 @@ def run_bip(args, aiger):
                 '-output=%s'%tmpnames[0],
             ] + args;
             
-            rc = subprocess.call(args, preexec_fn=pyabc._set_death_signal)
+            rc = subprocess.call(args)
             
             if rc!=0:
                 return None
