@@ -147,6 +147,9 @@ def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=
             for id, res in splitter:
                 
                 print 'NIKLAS: process %d finished with'%id, res
+
+                if id in kill_if_simplified:
+                    kill_if_simplified.remove(id)
                 
                 if id == sleep_id:
                     print 'NIKLAS: timeout'
@@ -156,8 +159,9 @@ def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=
                     print 'NIKLAS: simplify ended'
                     if not res:
                         continue
-                    print 'NIKLAS: killing'
-                    splitter.kill(kill_if_simplified)
+                    print 'NIKLAS: killing', kill_if_simplified
+                    for kill_id in kill_if_simplified:
+                        splitter.kill(kill_id)
                     splitter.fork_all( simplified_funcs )
 
                     sc_id = splitter.fork_one( pyabc_split.defer(compute_sc)(simple_aiger, sc_aiger, l2s_aiger))
