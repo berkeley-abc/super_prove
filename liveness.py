@@ -216,6 +216,8 @@ def run_niklas_multi(aiger, simplify, report_result, super_prove=None):
     
 if __name__ == "__main__":    
 
+    import click
+
     def simplify(aiger_in, aiger_out):
 
         with temp_file_names(2, suffix='.aig') as tmp:
@@ -243,11 +245,14 @@ if __name__ == "__main__":
             
         return False
         
-    aiger = "test.aig"
+    @click.command()
+    @click.argument("aiger", type=click.Path(exists=True, dir_okay=False))
+    def main(aiger):
 
-    while True:
         try:
             run_niklas_multi(aiger, simplify=simplify, report_result=report_result)
         except:
             import traceback
             traceback.print_exc()
+
+    main()
