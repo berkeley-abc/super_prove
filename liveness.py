@@ -63,7 +63,7 @@ def run_bip(args, aiger):
         with temp_file_names(1) as tmpnames:
 
             args = [
-                'bip.exe',
+                'bip',
                 '-abc',
                 '-input=%s'%aiger,
                 '-output=%s'%tmpnames[0],
