@@ -48,9 +48,14 @@ def parse_bip_status(status):
     
     return res
 
+
+def log(*args):
+    print 'LIVENESS (%d):'%os.getpid(), " ".join(str(arg) for arg in args)
+
+
 def run_bip(args, aiger):
 
-    print "NIKLAS: running bip", args, aiger
+    log('running: bip', " ".join(args), aiger)
 
     import redirect
     with redirect.redirect():
@@ -58,7 +63,7 @@ def run_bip(args, aiger):
         with temp_file_names(1) as tmpnames:
 
             args = [
-                'bip',
+                'bip.exe',
                 '-abc',
                 '-input=%s'%aiger,
                 '-output=%s'%tmpnames[0],
@@ -71,29 +76,28 @@ def run_bip(args, aiger):
 
             res = parse_bip_status(tmpnames[0])
 
-            print 'NIKLAS: bip finished: ', args, aiger, rc, res
-
-            return res
+    log('bip finished:', rc, res)
+    return res
 
 
 
 def run_super_prove(aiger_filename, used_cores, super_prove):
 
-    print 'NIKLAS: running super_prove', aiger_filename, used_cores, super_prove
+    log('running: super_prove on', aiger_filename, used_cores, super_prove)
 
     mask = affinity.sched_getaffinity(os.getpid())
     affinity.sched_setaffinity(os.getpid(), mask[used_cores:])
 
     res = super_prove(aiger_filename)
 
-    print 'NIKLAS: super_prove returned ', res
+    log('super_prove returned:', res)
 
     return res
 
 
 def compute_sc(simple_aiger, sc_aiger, l2s_aiger):
 
-    print 'NIKLAS: computing stabilizing constraints'
+    log('computing stabilizing constraints')
 
     N0 = pyzz.netlist.read_aiger(simple_aiger)
 
@@ -104,7 +108,7 @@ def compute_sc(simple_aiger, sc_aiger, l2s_aiger):
     M, xlat, loop_start = pyliveness.extract_liveness_as_safety(N, new_fg)
     M.write_aiger(l2s_aiger)
 
-    print 'NIKLAS: done computing stabilizing constraints'
+    log('done computing stabilizing constraints')
 
     return True
 
@@ -113,6 +117,8 @@ from pyaig import AIG, read_aiger, write_aiger, utils
 
 
 def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=None):
+
+    log('run_niklas_single')
     
     orig_args = [
         [ ',live', '-k=l2s', '-eng=treb-abs' ],
@@ -138,46 +144,52 @@ def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=
             timeout_id = splitter.add_timer(timeout) if timeout else None
             
             ids = splitter.fork_all( orig_funcs )
+            log('running engines:', ids)
             kill_if_simplified = ids[1:]
             
             simplifier_id = splitter.fork_one( pyabc_split.defer(simplify)(aiger, simple_aiger) )
+            log('running simplifier:', simplifier_id)
 
             sc_id = None
             
             for id, res in splitter:
-                
-                print 'NIKLAS: process %d finished with'%id, res
+
+                log('process %d finished with'%id, res)
 
                 if id in kill_if_simplified:
                     kill_if_simplified.remove(id)
                 
-                    print 'NIKLAS: timeout'
                 if id == timeout_id:
+                    log('timeout')
                     return False
                 
                 elif id == simplifier_id:
-                    print 'NIKLAS: simplify ended'
+                    log('simplify ended')
                     if not res:
                         continue
-                    print 'NIKLAS: killing', kill_if_simplified
+                    log('killing', kill_if_simplified)
                     for kill_id in kill_if_simplified:
                         splitter.kill(kill_id)
-                    splitter.fork_all( simplified_funcs )
+                    tmp_ids = splitter.fork_all( simplified_funcs )
+                    log('running engines:', tmp_ids)
 
                     sc_id = splitter.fork_one( pyabc_split.defer(compute_sc)(simple_aiger, sc_aiger, l2s_aiger))
+                    log('running sc:', sc_id)
                     continue
 
                 elif id == sc_id:
 
-                    print "NIKLAS: sc ended"
+                    log('sc ended')
 
                     if res:
-                        splitter.fork_one( pyabc_split.defer(run_bip)([',live', '-k=inc'], sc_aiger) )
+                        tmp_id = splitter.fork_one( pyabc_split.defer(run_bip)([',live', '-k=inc'], sc_aiger) )
+                        log('running engine:', tmp_id)
                         if super_prove:
-                            splitter.fork_one( pyabc_split.defer(run_super_prove)(l2s_aiger, 3, super_prove) )
+                            tmp_id = splitter.fork_one( pyabc_split.defer(run_super_prove)(l2s_aiger, 3, super_prove) )
+                            log('running super_prove:', tmp_id)
 
                 elif report_result(res):
-                    print 'NIKLAS: RESULT', res
+                    log('RESULT', res)
                     return True
 
     return False
@@ -237,10 +249,10 @@ if __name__ == "__main__":
         if res and 'result' in res:
             result = res['result']
             if result=='proved':
-                print "PROVED: ", id
+                log("PROVED:", id)
                 return True
             elif result=='failed':
-                print "FAILED:", id
+                log("FAILED:", id)
                 return True
             
         return False
