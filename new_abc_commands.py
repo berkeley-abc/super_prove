@@ -238,7 +238,7 @@ def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=
 def super_prove():
     return par.sp(check_trace=True)
 
-proof_command_wrapper(super_prove,  'HWMCC', '/super_prove_aiger',  0, write_cex=True, bmc_depth=True)
+proof_command_wrapper(super_prove,  'HWMCC', '/super_prove_aiger',  0, write_cex=True, bmc_depth=False)
 proof_command_wrapper(par.simple,  'HWMCC', '/simple_aiger',  0, write_cex=True, bmc_depth=True)
 proof_command_wrapper(par.mp,  'HWMCC', '/multi_prove_aiger',  0, write_cex=True, bmc_depth=False, multi=True)
 
