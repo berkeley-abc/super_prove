@@ -238,8 +238,9 @@ def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=
 def super_prove():
     return par.sp(check_trace=True)
 
-proof_command_wrapper(super_prove,  'HWMCC13', '/super_prove_aiger',  0, write_cex=True, bmc_depth=True)
-proof_command_wrapper(par.simple,  'HWMCC13', '/simple_aiger',  0, write_cex=True, bmc_depth=True)
+proof_command_wrapper(super_prove,  'HWMCC', '/super_prove_aiger',  0, write_cex=True, bmc_depth=True)
+proof_command_wrapper(par.simple,  'HWMCC', '/simple_aiger',  0, write_cex=True, bmc_depth=True)
+proof_command_wrapper(par.mp,  'HWMCC', '/multi_prove_aiger',  0, write_cex=True, bmc_depth=False, multi=True)
 
 def simple_liveness_prooffunc(aig_filename):
 
@@ -307,4 +308,4 @@ def simple_liveness_prooffunc(aig_filename):
         import traceback
         traceback.print_exc()
 
-proof_command_wrapper_internal( simple_liveness_prooffunc, "HWMCC13", "/simple_liveness_aiger", 0, multi=True)
+proof_command_wrapper_internal( simple_liveness_prooffunc, "HWMCC", "/simple_liveness_aiger", 0, multi=True)
