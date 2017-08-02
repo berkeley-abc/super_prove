@@ -104,12 +104,14 @@ abs_time = 150
 abs_time = 5000
 abs_time = 500
 abs_time = 200 #changed for hwmcc15
+abs_time = 2000 #changed for clifford examples
 abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
 ##total_spec_refine_time = 150
 total_spec_refine_time = 200 # changed for hwmcc15
 ifbip = 0 # sets the abtraction method to vta or gla, If = 1 then uses ,abs
 if_no_bip = False #True sets it up so it can't use bip and reachx commands.
 abs_ratio = .6 #this controls when abstraction is too big and gives up
+abs_ratio = .99 #for clifford examples
 #####################################
 
 ############## No bip Settings ########################
@@ -145,15 +147,18 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'prove_part_3','verify','sleep','PDRM_sd','prove_part_1',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
            'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
-           'iprove','BMC_J2','splitprove','pdrm_exact', 'AVY']
+           'iprove','BMC_J2','splitprove','pdrm_exact', 'AVY', 'PDRae', 'PDRMnc', 'PDRMyuf',
+           'PDRMnct'] 
+
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
 # 10. Min_ret, 11. For_ret, 12. REACHP, 13. REACHN 14. PDRseed 15.prove_part_2,
 #16.prove_part_3, 17.verify, 18.sleep, 19.PDRMm, 20.prove_part_1,
 #21.run_parallel, 22.INTRP_bwd, 23. Interp_m 24. REACHY 25. REACHYc 26. Rarity Sim 27. simplify
-#28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a 33. extract 34. pdr_abstract
+#28. speculate, 29. quick_sec, 30 bmc3 -S, 31. BMC2 32. extract -a
+#33. extract 34. pdr_abstract
 #35 par_scorr, 36. dsat, 37. iprove 38. BMC_J2 39. splitprove 40. pdrm_exact
-#41. AVY
+#41. AVY, 42. PDRae, 43. pdr -nc, 44. pdr -yuf, 45. pdrm -nct
 win_list = [(0,.1),(1,.1),(2,.1),(3,.1),(4,.1),(5,-1),(6,-1),(7,.1)]
 FUNCS = ["(pyabc_split.defer(pdr)(t))",
 ##         "(pyabc_split.defer(abc)('&get;,pdr -vt=%f'%t))",
@@ -210,7 +215,11 @@ FUNCS = ["(pyabc_split.defer(pdr)(t))",
          "(pyabc_split.defer(splitprove)(t))",
          "(pyabc_split.defer(pdrm_exact)(t))",
          "(pyabc_split.defer(avy)(t))",
+         "(pyabc_split.defer(pdrae)(t))",
 ##         "(pyabc_split.defer(bmc_par_jmps)(t))"
+         "(pyabc_split.defer(pdrmnc)(t))",
+         "(pyabc_split.defer(pdrmyuf)(t))",
+         "(pyabc_split.defer(pdrmnct)(t))"
           ]
 ##         "(pyabc_split.defer(abc)('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max_bmc))))"
 #note: interp given 1/2 the time.
@@ -220,14 +229,19 @@ allreachs = [8,12,13,24,25]
 allreachs = [24]
 reachs = [24]
 ##allpdrs = [14,7,34,19,0]
-allpdrs = [34,7,14,19,0]
-allpdrs2 = [34,7,14,19,0]
-pdrs = [34,7,14,0]
-allbmcs = [9,30,2,31,38]
-exactbmcs = [9,2,31]
-exbmcs = [2,9,31]
-bmcs = [9,30,31,2,38]
+#allpdrs = [34,7,14,0,42,43,44,45]
+pdrs = allpdrs = [34,7,0,43,45]
+#allpdrs2 = [34,7,0,42,43,44,45]
+#pdrs = [34,7,14,0,42,43,44,45]
+##allbmcs = [9,30,2,31,38]
+##exactbmcs = [9,2,31]
+##exbmcs = [2,9,31]
+##bmcs = [9,30,31,2,38]
 bmcs1 = [9]
+bmcs = allbmcs = [9,30,2,38]
+exbmcs = exactbmcs = [9,2,31]
+##exbmcs = [2,9,31]
+##bmcs = [9,30,2,38]
 
 #added AVY as a new interpolation method
 #no AVY = 41 for hwmcc15
@@ -269,6 +283,7 @@ def initialize():
     last_time = 0
 ##    last_gasp_time = 2001 #set to conform to hwmcc12
     last_gasp_time = 1500 #set to conform to hwmcc15
+    last_gasp_time = 3600 #set to 1 hour
     j_last = 0
     seed = 113
     init_simp = 1
@@ -294,6 +309,7 @@ def initialize():
     abs_time = 500
     abs_time = 150
     abs_time = 200 #for hwmcc15
+    abs_time = 2000 #for clifford examples
     abs_ref_time = 50 #number of sec. allowed for abstraction refinement.
 ##    total_spec_refine_time = 150 # timeout for speculation refinement
     total_spec_refine_time = 200 # timeout for speculation refinement changed for hwmcc15
@@ -490,8 +506,9 @@ def set_engines(N=0):
         slps = [18] #sleep
     else:
         reachs = [24] #REACHY REACHX
+        pdrs = allpdrs
 ##        pdrs = [7,34,14,19,0] #PDRM pdr_abstract PDR_seed PDRMm PDR
-        pdrs = allpdrss=[7,34,14]
+##        pdrs = allpdrs =[7,34,14]
 ##        intrps = [41,23,1] #Interp_m INTERPOLATION
 ##        intrps = [41,23] #rkb
         intrps = [23,1] #Interp_m INTERPOLATION
@@ -2091,6 +2108,7 @@ def speculate(t=0):
         add_trace('de_speculate')
         return Undecided_no_reduction
     if res[0] == 'UNSAT':
+        add_trace('UNSAT by filter "%s" inside initial_speculate'%res[1])
         return Unsat
     if res[0] == 'UNDECIDED' or res[0] == None:
         add_trace('de_speculate')
@@ -3243,7 +3261,7 @@ def try_phase():
     nl = n_latches()
     ni = n_pis()
     no = n_pos()
-    z = ok_phases(n)
+    z = ok_phases(n) # factors n into prime factors
     print z,
     if len(z) == 1:
         return False
@@ -3547,13 +3565,13 @@ def scorr_constr():
     abc(cmd)
     ps()
     if n_pos() == n_pos_before:
-        print 'none found'
+        print 'no constraints found'
         return Undecided_no_reduction
     if (n_ands() > na): #no constraints found
         abc('r/rf %s_savetemp.aig'%f_name)
         return Undecided_no_reduction
     na = max(1,n_ands())
-    f = 1 #put here until bug is fixed.
+##    f = 1 #put here until bug is fixed.
     print 'Found %d constraints'%((n_pos() - n_pos_before))
     abc('scorr -c -F %d'%f)
     abc('fold')
@@ -3617,6 +3635,7 @@ def prove(a=0,abs_tried = False):
         if a == 3 do not do speculation
         """  
     global x_factor,xfi,f_name, last_verify_time,K_backup, t_init, sec_options, spec_found_cex
+    print 'entering prove'
     spec_first = False
     set_max_bmc(-1,True)
     abs_found_cex_after_spec = spec_found_cex_after_abs = False
@@ -3711,7 +3730,8 @@ def prove_part_1(frames_2=True):
 ##    ps()
     x_factor = xfi
     set_globals()
-    abc('&get;&scl;&syn2;&put')
+##    abc('&get;&scl;&syn2;&put')
+    abc('&get;&scl;&syn2;&scl;&put')
     print 'Initial quick simplified result: ',
     ps()
     if n_latches() > 0:
@@ -3748,6 +3768,7 @@ def prove_part_1(frames_2=True):
 def run_par_simplify():
     set_globals()
     t = 1000
+    ps()
     funcs = [eval('(pyabc_split.defer(pre_simp)())')]
     J = [35]+pdrs[:3]+bmcs[:3]+intrps[:1]+sims  # 35 is par_scorr
     J = modify_methods(J,1)
@@ -4378,11 +4399,14 @@ def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
     print '\n               *** Executing super_prove ***'
     print '%s: '%f_name,
     ps()
-    b = bmc3(5)
-    get_bmc_depth(True)
-    if b == 'SAT':
-        result = ['SAT']+[['bmc3']]
-    else:
+    # commented out because bmc3 does not handle timeout mechanism well. Need to fix.
+##    b = bmc3(5)
+##    get_bmc_depth(True)
+##    if b == 'SAT':
+##        result = ['SAT']+[['bmc3']]
+##    else:
+    if True:
+        print 'entering super_prove'
         result = super_prove(n,t)
     print '%s is done and is %s'%(initial_f_name,result[0])
 ##    print 'sp: ',
@@ -5193,24 +5217,6 @@ def get_counts(L):
     return [s,u,d]
         
 
-##def output(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[]):
-##    global t_iter_start
-##    print_all(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[])
-##    #print 'L = %s, L1 = %s, L2 = %s'%(sumsize(L),sumsize(L1),sumsize(L2))
-##    L1 = unmap(list(L1),L2,map2)
-####    print 'L1 after map2 = %s'%sumsize(L1)
-##    if NP > 1: #an unrolling was done
-##        L1 = check_and_trim_L(NP,list(L1))#map into reduced size before unrolling was done by phase.
-##        print 'L1 = %s'%sumsize(L1)
-##    L = unmap(list(L),L1,map1)
-####    print 'L after map1 = %s'%sumsize(L)
-##    L = weave(list(L),[],lst1) #put back 1 in L
-####    print 'L after lst1 = %s'%sumsize(L)
-##    L = weave(list(L),lst0,[]) #put back 0 in L
-####    print 'L after lst0= %s'%sumsize(L) 
-##    report_results(list(L),final_map)
-##    return L
-
 def output2(L2,globs=[[],[],[],[],0,[]]):
     global t_iter_start
 ##    global map1g,map2g,lst0g,lst1g,NPg,final_mapg
@@ -5222,14 +5228,6 @@ def output2(L2,globs=[[],[],[],[],0,[]]):
     report_results(list(L),final_map)
     return L
 
-##def output3(L2,map1,map2,lst0,lst1,NP,final_map=[]):
-##    """ find out where results came from"""
-##    global t_iter_start
-##    L1 = unmap2(L2,map2)
-##    L = unmap2(L1,map1)
-##    L = weave(list(L),[],lst1) #put back 1 in L
-##    L = weave(list(L),lst0,[]) #put back 0 in L
-##    return L
 
 def print_all(L,L1,L2,map1,map2,lst0,lst1,NP,final_map=[]):
 ##    return
@@ -5436,7 +5434,7 @@ def scorr_T(t=10000):
         os.remove(name4)
     N=m_best = 0
     for i,res in pyabc_split.abc_split_all(funcs):
-        print N,i,res
+##        print N,i,res
         if i == 0: #timeout
             print 'scorr_T timeout'
             break
@@ -5822,36 +5820,6 @@ def gaps(L1):
         i=i+1
     return L1_gaps
 
-##    j=i=0
-##    L = []
-##    L1.sort()
-##    L2.sort()
-##    LL1 = L1 + [10000000] #make sure list L2 is processed to the end
-####    print 'L1 and L2 is sorted %d, %d: '%(len(L1),len(L2))
-##    if not L2 == []:
-##        while True:
-##    ##        print i,j
-##            if LL1[i] <= L2[j]:
-##                i = i+1
-##            else:
-##                L= L + [L2[j] + i]
-##    ##            print L
-##                j = j+1
-##                if j == len(L2):
-##                    break
-##    if n == 0:
-##        L = L + L1
-##        L.sort()        
-##    return L            #L is already sorted
-    
-
-##def solve_all(L2,t):
-##    global f_name, skip_spec
-##    print '\n**** entering super_prove iteration ****'
-##    old_f_name = f_name
-##    L2 = sp_iter(0,t)
-##    f_name = old_f_name
-##    return ['?'] + L2
 
 def inject(L,lst,v):
     """
@@ -5888,8 +5856,7 @@ def insert(L1,L):
             k = k+1
             if k >= len(L1):
                 break
-    return L
-                   
+    return L                   
     
 
 def duplicate_values(L1,NP):
@@ -5899,14 +5866,6 @@ def duplicate_values(L1,NP):
     for j in range(NP-1):
         L = L+[-1]*len(L1)
     return L
-
-##def duplicate_values2(L1,NP):
-##    """ interleave values """
-##    L = []
-##    for j in range(len(L1)):
-##        v = L1[j]
-##        L = L + [v]*NP
-##    return L
 
 def check_and_trim_L(NP,L):
     """This happens when an unrolling creates additional POs
@@ -6033,6 +5992,7 @@ def super_prove(n=0,t=2001):
     global max_bmc, init_initial_f_name, initial_f_name,win_list, last_verify_time, f_name
 ##    print 'sec_options = %s'%sec_options
 ##    init_initial_f_name = initial_f_name
+##    print 'entering super_prove'
     size = str([n_pis(),n_pos(),n_latches(),n_ands()])
     add_trace('[%s: size = %s ]'%(f_name,size))
     if x_factor > 1:
@@ -6049,12 +6009,12 @@ def super_prove(n=0,t=2001):
         print '%s: total clock time taken by super_prove = %0.2f sec.'%(result,tt)
         add_trace('%s'%result)
         add_trace('Total time = %.2f'%tt)
-##        print m_trace
+        print m_trace
         return [result]+[m_trace]
     elif ((result == 'UNDECIDED') and (n_latches() == 0)):
         add_trace('%s'%result)
         add_trace('Total time = %.2f'%tt)
-##        print m_trace
+        print m_trace
         return [result]+[m_trace]
     print '%s: total clock time taken by super_prove so far = %0.2f sec.'%(result,(time.time() - x))
     y = time.time()
@@ -6066,7 +6026,7 @@ def super_prove(n=0,t=2001):
     print 'Total clock time for %s = %0.2f sec.'%(init_initial_f_name,tt)
     add_trace('%s'%result)
     add_trace('Total time for %s = %.2f'%(init_initial_f_name,tt))
-##    print m_trace
+    print m_trace
     return [result]+[m_trace]
 
 def reachm(t):
@@ -6093,31 +6053,6 @@ def select_undecided(L):
             res = res + [l[0]]
     return res
         
-####def execute(L,t):
-####    """
-####    run the files in the list L using ss, sp, ssm each for max time = t
-####    """
-####    funcs1 = [eval('(pyabc_split.defer(ss)())')]
-####    funcs1 = create_funcs(slps,t)+funcs1
-####    mtds1 =sublist(methods,slps) + ['ss']
-####    funcs2 = [eval('(pyabc_split.defer(sp)())')]
-####    funcs2 = create_funcs(slps,t)+funcs2
-####    mtds2 =sublist(methods,slps) + ['sp']
-####    funcs3 = [eval('(pyabc_split.defer(ssm)())')]
-####    funcs3 = create_funcs(slps,t)+funcs3
-####    mtds3 =sublist(methods,slps) + ['ssm']
-####    for j in range(len(L)):
-####        name = L[j]
-####        print '\n\n\n\n________ss__________'
-####        read_file_quiet(name)
-####        print '****ss****'
-####        fork_last(funcs1,mtds1)
-####        print '***Done with ss on %s\n'%name
-####        print '\n\n******ssm************'
-####        read_file_quiet(name)
-####        print '****ssm****'
-####        fork_last(funcs3,mtds3)
-####        print '***Done with ssm on %s \n'%name
 
 def execute_op(op,L,t):
     """
@@ -6321,24 +6256,6 @@ def modify_methods(J,dec=0):
         J = remove_intrps(J)
     return J
 
-##def BMC_VER():
-##    """ a special version of BMC_VER_result that just works on the current network
-##    Just runs engines in parallel - no backing up
-##    """
-##    global init_initial_f_name, methods, last_verify_time, n_proc,last_gasp_time
-##    xt = time.time()
-##    result = 5
-##    t = max(2*last_verify_time,last_gasp_time)  ####
-##    print 'Verify time set to %d'%t
-##    J = slps + pdrs + bmcs + intrps
-##    J = modify_methods(J)
-##    F = create_funcs(J,t)
-##    mtds = sublist(methods,J)
-##    print mtds
-##    (m,result) = fork_break(F,mtds,'US')
-##    result = RESULT[result]
-##    print 'BMC_VER result = %s'%result
-##    return result
 
 def BMC_VER_result(t=0):
 ##    return 'UNDECIDED'   #TEMP
@@ -6466,19 +6383,6 @@ def prove_j_assuming_rest(j):
     print '^^^ f_name restored as %s'%f_name
     abc('r %s_temprest.aig'%f_name)
 
-##def remove(L):
-##    global n_pos_proved, n_pos_before
-##    lst = []
-##    for j in range(len(L)):
-##        ll = L[j][1:]
-##        if len(ll) == 0:
-##            continue
-##        else:
-##            lst = lst + ll
-##    zero(lst)
-##    n_pos_proved = n_pos_proved + count_less(lst,n_pos_before - n_pos_proved)
-##    print 'The number of POs removed by iso was %d'%len(lst)
-##    l=remove_const_v_pos(0) #can an original PO be zero?
 
 def prove_all_iso():
     """Tries to prove output k by isomorphism. Gets number of iso-eq_classes as an array of lists.
@@ -6777,23 +6681,23 @@ def pord_all(t,n=4):
         else:
             return Unsat
 
-def bmc_ss(t):
-    """
-    finds a set cexs in t seconds starting at 2*N where N is depth of bmc -T 1
-    The cexs are put in the global cex_list
-    """
-    global cex_list
-    x = time.time()
-    abc('bmc3 -a -C 1000000 -T %f'%(t))
-    if is_sat():
-        cex_list = cex_get_vector() #does this get returned from a concurrent process?
-        n = count_non_None(cex_list)
-        L = list_non_None(cex_list)
-        print '%d cexs found in %0.2f sec'%(n,(time.time()-x))
-##        remove_disproved_pos(cex_list)
-    else:
-        L = []
-    return L
+##def bmc_ss(t):
+##    """
+##    finds a set cexs in t seconds starting at 2*N where N is depth of bmc -T 1
+##    The cexs are put in the global cex_list
+##    """
+##    global cex_list
+##    x = time.time()
+##    abc('bmc3 -a -C 1000000 -T %f'%(t))
+##    if is_sat():
+##        cex_list = cex_get_vector() #does this get returned from a concurrent process?
+##        n = count_non_None(cex_list)
+##        L = list_non_None(cex_list)
+##        print '%d cexs found in %0.2f sec'%(n,(time.time()-x))
+####        remove_disproved_pos(cex_list)
+##    else:
+##        L = []
+##    return L
 
 def iso_slp(t=30):
     F = [eval('pyabc_split.defer(sleep)(t))')]
@@ -6801,19 +6705,6 @@ def iso_slp(t=30):
     for i,res in pyabc_split.abc_split_all(F):
         if i == 0:
             return 
-
-##def iter_par_multi_sat(t=10,m=1):
-##    while True:
-##        abc('w %s_save.aig'%f_name)
-##        S,lst1 = par_multi_sat(t,m) #run 3 engines in parallel looking for SAT outputs
-##        lst1.sort()
-##        print 'Found %d SAT POs'%len(lst1)
-##        abc('r %s_save.aig'%f_name)
-##        if len(lst1)==0:
-##            break
-##        remove(lst1,1)
-##        pre_simp(1,1)
-##        iso()
 
 def show_partitions(L):
     for i in range(len(L)):
@@ -7133,105 +7024,105 @@ def switch(ss):
     return s1
         
 
-def pdr_ss_r(t):
-    """
-    assumes that 0 POs have been removed
-    finds a set cexs in t seconds. Returns list of SAT POs found
-    """
-    global cex_list
-    x = time.time()
-    abc('pdr -az -T %f'%(t))
-    if is_sat():
-        print 'entering cex  get vector'
-        cex_list = cex_get_vector() #does this get returned from a concurrent process?
-##        n = count_non_None(cex_list)
-        print len(cex_list)
-        L = list_non_None(cex_list)
-        n = len(L)
-        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
-        if n == len(cex_list):
-            print 'all remaining POs are SAT'
-##            return L
-        else:
-            remove_disproved_pos(cex_list) #note that this will not remove all POs
-    else:
-        L = []
-    print 'T = %0.2f'%(time.time()-x)
-    return L
+##def pdr_ss_r(t):
+##    """
+##    assumes that 0 POs have been removed
+##    finds a set cexs in t seconds. Returns list of SAT POs found
+##    """
+##    global cex_list
+##    x = time.time()
+##    abc('pdr -az -T %f'%(t))
+##    if is_sat():
+##        print 'entering cex  get vector'
+##        cex_list = cex_get_vector() #does this get returned from a concurrent process?
+####        n = count_non_None(cex_list)
+##        print len(cex_list)
+##        L = list_non_None(cex_list)
+##        n = len(L)
+##        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
+##        if n == len(cex_list):
+##            print 'all remaining POs are SAT'
+####            return L
+##        else:
+##            remove_disproved_pos(cex_list) #note that this will not remove all POs
+##    else:
+##        L = []
+##    print 'T = %0.2f'%(time.time()-x)
+##    return L
 
-def bmc_ss_r(t):
-    """
-    assumes that 0 POs have been removed
-    finds a set cexs in t seconds. Returns list of SAT POs found
-    """
-    global cex_list
-    x = time.time()
-    abc('bmc3 -az -C 1000000 -T %f'%(t))
-    if is_sat():
-        print 'entering cex  get vector'
-        cex_list = cex_get_vector() #does this get returned from a concurrent process?
-##        n = count_non_None(cex_list)
-        L = list_non_None(cex_list)
-        n= len(L)
-        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
-        if n == len(cex_list):
-            print 'all remaining POs are SAT'
-##            return L
-        else:
-            remove_disproved_pos(cex_list) #note that this will not remove all POs
-    else:
-        L = []
-    print 'T = %0.2f'%(time.time()-x)
-    return L
+##def bmc_ss_r(t):
+##    """
+##    assumes that 0 POs have been removed
+##    finds a set cexs in t seconds. Returns list of SAT POs found
+##    """
+##    global cex_list
+##    x = time.time()
+##    abc('bmc3 -az -C 1000000 -T %f'%(t))
+##    if is_sat():
+##        print 'entering cex  get vector'
+##        cex_list = cex_get_vector() #does this get returned from a concurrent process?
+####        n = count_non_None(cex_list)
+##        L = list_non_None(cex_list)
+##        n= len(L)
+##        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
+##        if n == len(cex_list):
+##            print 'all remaining POs are SAT'
+####            return L
+##        else:
+##            remove_disproved_pos(cex_list) #note that this will not remove all POs
+##    else:
+##        L = []
+##    print 'T = %0.2f'%(time.time()-x)
+##    return L
 
-def sim_ss_r(t):
-    """
-    assumes that 0 POs have been removed
-    finds a set cexs in t seconds. Returns list of SAT POs found
-    """
-    global cex_list
-    x = time.time()
-    run_command('sim3 -az -T %f'%(t))
-    if is_sat():
-        print 'entering cex  get vector'
-        cex_list = cex_get_vector() #does this get returned from a concurrent process?
-##        n = count_non_None(cex_list)
-        L = list_non_None(cex_list)
-        n = len(L)
-        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
-        if n == len(cex_list):
-            print 'all remaining POs are SAT'
-##            return L
-        else:
-            remove_disproved_pos(cex_list) #note that this will not remove all POs
-    else:
-        L = []
-    print 'T = %0.2f'%(time.time()-x)
-    return L
+##def sim_ss_r(t):
+##    """
+##    assumes that 0 POs have been removed
+##    finds a set cexs in t seconds. Returns list of SAT POs found
+##    """
+##    global cex_list
+##    x = time.time()
+##    run_command('sim3 -az -T %f'%(t))
+##    if is_sat():
+##        print 'entering cex  get vector'
+##        cex_list = cex_get_vector() #does this get returned from a concurrent process?
+####        n = count_non_None(cex_list)
+##        L = list_non_None(cex_list)
+##        n = len(L)
+##        print '%d cexs found in %0.2f sec.'%(n,(time.time()-x))
+##        if n == len(cex_list):
+##            print 'all remaining POs are SAT'
+####            return L
+##        else:
+##            remove_disproved_pos(cex_list) #note that this will not remove all POs
+##    else:
+##        L = []
+##    print 'T = %0.2f'%(time.time()-x)
+##    return L
 
-def check_None_status(L,s=[],v=0):
-    """ L is the PO numbers that had non_None in
-    0 means sat and 1 means unsat is
-    v tells which value means sat"""
-    if s == []:
-        s = status_get_vector()
-    error = False
-    for j in L:
-        if s[j] == v:
-            continue
-        else:
-            error = True
-    for i in range(len(s)):
-        if s[i] == v:
-            if i in L:
-                continue
-        else:
-            error = True
-    if error:
-        print 'status and non_None do not agree'
-        print 'L = %d'%L
-        print 'SAT and UNSAT counts switched'
-        print sumsize(s)
+##def check_None_status(L,s=[],v=0):
+##    """ L is the PO numbers that had non_None in
+##    0 means sat and 1 means unsat is
+##    v tells which value means sat"""
+##    if s == []:
+##        s = status_get_vector()
+##    error = False
+##    for j in L:
+##        if s[j] == v:
+##            continue
+##        else:
+##            error = True
+##    for i in range(len(s)):
+##        if s[i] == v:
+##            if i in L:
+##                continue
+##        else:
+##            error = True
+##    if error:
+##        print 'status and non_None do not agree'
+##        print 'L = %d'%L
+##        print 'SAT and UNSAT counts switched'
+##        print sumsize(s)
 
 
 def list_non_None(lst):
@@ -7299,7 +7190,7 @@ def par_bss(t,s):
     return res
                           
 def bmc_j(t=2001,s=0,j=2,c=5000,d=5000):
-    cmd = 'bmc3 -C %d -J %d -D %d -S %d'%(c,j,d,s)
+    cmd = 'bmc3 -r -C %d -J %d -D %d -S %d'%(c,j,d,s)
     abc(cmd)
     gs = prob_status()
     if not gs in [0,1,-1]:
@@ -7311,7 +7202,7 @@ def bmc_j2(t=2001):
     """ finds a cex in t seconds starting at 2*N where N is depth of bmc -T 1"""
     x = time.time()
     tt = min(5,max(1,.05*t))
-    abc('bmc3 -T %0.2f'%tt)
+    abc('bmc3 -r -T %0.2f'%tt)
     if is_sat():
 ##        print 'cex found in %0.2f sec at frame %d'%((time.time()-x),cex_frame())
         return RESULT[get_status()]
@@ -7321,7 +7212,7 @@ def bmc_j2(t=2001):
 ##    print bmc_depth()
 ##    abc('bmc3 -C 1000000 -T %f -S %d'%(t,int(1.5*max(3,max_bmc))))
 ##    cmd = 'bmc3 -J 2 -D 4000 -C 1000000 -T %f -S %d'%(t,2*N)
-    cmd = 'bmc3 -C 2000 -J %d'%(2*N+2)
+    cmd = 'bmc3 -r -C 2000 -J %d'%(2*N+2)
 ##    print cmd
     abc(cmd)
 ##    if is_sat():
@@ -7375,8 +7266,36 @@ def pdra(t=2001):
         print 'pdra returned %s'%str(gs)
     return RESULT[get_status()]
 
+def pdrae(t=2001):
+    abc('&get; ,treb -abs -rlim=100 -vt=%f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdra returned %s'%str(gs)
+    return RESULT[get_status()]
+
 def pdrm(t=2001):
     abc('pdr -C 0 -T %f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdrm returned %s'%str(gs)
+    return RESULT[get_status()]
+
+def pdrmnct(t=2001):
+    abc('pdr -nct -C 0 -T %f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdrm returned %s'%str(gs)
+    return RESULT[get_status()]
+
+def pdrmnc(t=2001):
+    abc('pdr -nc -C 0 -T %f'%t)
+    gs = prob_status()
+    if not gs in [0,1,-1]:
+        print 'pdrm returned %s'%str(gs)
+    return RESULT[get_status()]
+
+def pdrmyuf(t=2001):
+    abc('pdr -yuf -C 0 -T %f'%t)
     gs = prob_status()
     if not gs in [0,1,-1]:
         print 'pdrm returned %s'%str(gs)
@@ -7422,12 +7341,16 @@ def mprove_and(t=2001,gt=10,C=999,H=0):
         abc('&get; &cycle -F %d; &put'%C) 
     abc('&get; &mprove -T %.2f -G %.2f -H %.2sf'%(tt,gt,H))
     cex_list = cex_get_vector()
+    if cex_list is None:
+        cex_list = [None]*n_pos()
     L = list_non_None(cex_list)
     print '\nmprove_and(%.2f,%.2f,%.2f): CEXs = %d, time = %.2f'%(tt,gt,H,len(L),(time.time()-t_init))
 ##    print 'Length CEXs = %d'%(len(L))
     s = status_get_vector()
 ##    print sumsize(s)
-    if len(s) == 0: #error if this happens check with Alan
+    if s is None:
+        s = [-1]*n_pos()
+    elif len(s) == 0: #error if this happens check with Alan
         s = [-1]*n_pos()
     sss = switch(list(s))
 ##    print 's_status = %s'%sumsize(sss)
@@ -7437,11 +7360,15 @@ def bmc3az(t=2001,gt=10,C=999,H=0):
     t_init = time.time()
     if  not C == 0:
         abc('&get; &cycle -F %d; &put'%C) 
-    abc('bmc3 -az -T %.2f -G %.2f -H %.2f'%(t,gt,H))
+    abc('bmc3 -azr -T %.2f -G %.2f -H %.2f'%(t,gt,H))
 ##    cex_list = cex_get_vector()
 ##    L = list_non_None(cex_list)
     print 'bmc3az(%.2f,%.2f,%d,%d): time = %.2f'%(t,gt,C,H,(time.time()-t_init)),
-    s = switch(status_get_vector())
+    ss = status_get_vector()
+    if ss is None:
+        s = [-1]*n_pos()
+    else:
+        s = switch(ss)
     print sumsize(s)
     return -1,s
 
@@ -7491,7 +7418,7 @@ def bmc3x(t=20,start=0,f=1):
     """ start at state and run bmc3 for f frames
     return the set of POs hit"""
     set_initial(start)
-    abc('bmc3 -axv -T %.2f -F %d'%(t,f))
+    abc('bmc3 -axvr -T %.2f -F %d'%(t,f))
     x =cex_get_vector()
     #the value of  get_frame here is one less than get_frame after a single cex
     D = [1+x[i].get_frame() for i in xrange(len(x)) if not x[i] == None]
@@ -7668,19 +7595,19 @@ def remove_pos_list(nlist):
         l[i]=1
     remove_pos(l)
 
-def bmc3as(t=0,start=0,C=0,H=0):
-    t_init = time.time()
-    abc('bmc3 -azx -T %.2f -S %d'%(t,start))
-    x = cex_get_vector()
-##    L = [i for i in xrange(n_pos()) if not x[i] == None]
-    D = [x[i].get_frame() for i in xrange(len(x)) if not x[i] == None]
-    print 'bmc3as(%.2f,%d): time = %.2f'%(t,start,(time.time()-t_init)),
-    s = switch(status_get_vector())
-    print sumsize(s),
-    D.append(set_max_bmc(max_bmc,chtr=False))
-    d = max(D)
-    print ' max depth = %d'%d
-    return d,s
+##def bmc3as(t=0,start=0,C=0,H=0):
+##    t_init = time.time()
+##    abc('bmc3 -azxr -T %.2f -S %d'%(t,start))
+##    x = cex_get_vector()
+####    L = [i for i in xrange(n_pos()) if not x[i] == None]
+##    D = [x[i].get_frame() for i in xrange(len(x)) if not x[i] == None]
+##    print 'bmc3as(%.2f,%d): time = %.2f'%(t,start,(time.time()-t_init)),
+##    s = switch(status_get_vector())
+##    print sumsize(s),
+##    D.append(set_max_bmc(max_bmc,chtr=False))
+##    d = max(D)
+##    print ' max depth = %d'%d
+##    return d,s
 
 def pdraz(t=2001,gt=10,H=0):
     """ H = runtimelimit per output. 0 => none
@@ -7691,7 +7618,12 @@ def pdraz(t=2001,gt=10,H=0):
 ##    cex_list = cex_get_vector()
 ##    L = list_non_None(cex_list)
 ##    check_None_status(L)
-    s = switch(status_get_vector())
+    ss = status_get_vector()
+    if ss is None:
+        s = [-1]*n_pos()
+    else:
+        s = switch(ss)
+##    print sumsize(s)
 ##    print 'Number of UNSAT POs = %d'%(len(s) - count_less(s,1))
     print 'pdraz(%.2f,%.2f,%d): time = %.2f'%(t,gt,H,(time.time()-t_init)),
     print sumsize(s)
@@ -7703,7 +7635,13 @@ def sim3az(t=2001,gt=10,C=1000,W=5,N=0):
     if  not C == 0:
         abc('&get; &cycle -F %d; &put'%C) 
     abc('sim3 -az -T %.2f -G %.2f -F 40 -W %d -N %d'%(t,gt,W,N)) #this is only one simulation???
-    L = list_non_None(cex_get_vector())
+    ss = status_get_vector()
+##    print ss
+    if ss is None:
+        s = [None]*n_pos()
+    else:
+        s = switch(ss)
+    L = list_non_None(s)
 ##    check_None_status(L)
     s = [-1]*n_pos()
     for i in L:
@@ -7713,56 +7651,56 @@ def sim3az(t=2001,gt=10,C=1000,W=5,N=0):
     return -1,s
 
 
-def sim3az2(t=2001,gt=10):
-    """ N = random seed, gt is gap time, W = #words, F = #frames
-    a round R is simulation for F frames. After each round, rarity info is
-    collected and updated. A restart is  done after S rounds, when a new
-    random seed is gotten, we restart from the initial state, but rarity information
-    is preserved.
-    """
-    global seed
-    t_init = time.time()
-    s = [-1]*n_pos()
-    f,w,b,r,res = (20,50,16,700,0)
-    while True:
-        ss = list(s)
-        for k in range(9):
-            t_old = time.time()
-##            f = min(f*2, 3500)
-##            res = min(max(f/4,30),50)
-##            w = max(((w+1)/2)-1,2)
-            abc('sim3 -az -T %.2f -G %.2f -F %d -W %d -N %d -B %d -R %d -S %d'%(gt,gt/2,f,w,seed,b,r,res))
-            print 'done with sim3'
-            L = list_non_None(cex_get_vector())
-            print 'len(L) = %d'%len(L)
-            seed = seed + 23
-            s_old = list(s)
-            print sumsize(s)
-            for i in L:
-                s[i] = 1 #1 indicates SAT here
-            print sumsize(s)
-            no_new = (s == s_old)
-            t_new = time.time()
-            lap_time = (t_new - t_old)
-            print 'lap_time = %.2f, '%lap_time,
-            print sumsize(s)
-            print no_new, t, gt,(t_new-t_init),(t_new+lap_time-t_init)
-            print f,w,seed,b,r,res
-            if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
-                break
-            if (t_new+lap_time -t_init) > t: #not enough time left for another lap
-                break
-        no_new = (s == ss)
-        if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
-            break
-        if (t_new+lap_time - t_init) > t: #not enough time left
-            break 
-    print 'sim3az2(%.2f,%.2f): time = %.2f'%(t,gt,(time.time()-t_init)),
-    print sumsize(s)
-    return -1,s
+##def sim3az2(t=2001,gt=10):
+##    """ N = random seed, gt is gap time, W = #words, F = #frames
+##    a round R is simulation for F frames. After each round, rarity info is
+##    collected and updated. A restart is  done after S rounds, when a new
+##    random seed is gotten, we restart from the initial state, but rarity information
+##    is preserved.
+##    """
+##    global seed
+##    t_init = time.time()
+##    s = [-1]*n_pos()
+##    f,w,b,r,res = (20,50,16,700,0)
+##    while True:
+##        ss = list(s)
+##        for k in range(9):
+##            t_old = time.time()
+####            f = min(f*2, 3500)
+####            res = min(max(f/4,30),50)
+####            w = max(((w+1)/2)-1,2)
+##            abc('sim3 -az -T %.2f -G %.2f -F %d -W %d -N %d -B %d -R %d -S %d'%(gt,gt/2,f,w,seed,b,r,res))
+##            print 'done with sim3'
+##            L = list_non_None(cex_get_vector())
+##            print 'len(L) = %d'%len(L)
+##            seed = seed + 23
+##            s_old = list(s)
+##            print sumsize(s)
+##            for i in L:
+##                s[i] = 1 #1 indicates SAT here
+##            print sumsize(s)
+##            no_new = (s == s_old)
+##            t_new = time.time()
+##            lap_time = (t_new - t_old)
+##            print 'lap_time = %.2f, '%lap_time,
+##            print sumsize(s)
+##            print no_new, t, gt,(t_new-t_init),(t_new+lap_time-t_init)
+##            print f,w,seed,b,r,res
+##            if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
+##                break
+##            if (t_new+lap_time -t_init) > t: #not enough time left for another lap
+##                break
+##        no_new = (s == ss)
+##        if (lap_time > gt and no_new) or lap_time > t or (t_new - t_init) > t:
+##            break
+##        if (t_new+lap_time - t_init) > t: #not enough time left
+##            break 
+##    print 'sim3az2(%.2f,%.2f): time = %.2f'%(t,gt,(time.time()-t_init)),
+##    print sumsize(s)
+##    return -1,s
     
 def bmc3(t=2001):
-    abc('bmc3  -T %d'%t)
+    abc('bmc3 -r  -T %d'%t)
     gs = prob_status()
     if not gs in [0,1,-1]:
         print 'bmc3 returned %s'%str(gs)
@@ -8415,7 +8353,7 @@ def sop_balance(k=4):
         print nl(),
 
 def speedup(k=6):
-    run_command('st;&get;&syn2;&if -K %d -C 16 -g;&ps;&synch2;&if -K %d -C 16;&ps;&mfs;&ps;&put'%(k,k))
+    run_command('&get;&st;&syn2;&st;&if -K %d -C 16 -g;&ps;&st;&synch2;&st;&if -K %d -C 16;&ps;&mfs;&ps;&put'%(k,k))
     print nl()
 
 #+++++++++++++++++ start SCC +++++++++++++++++++++++++++++++
@@ -8545,80 +8483,6 @@ def fi_sig(npi=0,npo=1):
         fis.append(list(co))
     return fis
 
-##
-##def tfi(i):
-##    """
-##    finds tfi of node i that are not already in an scc.
-##    j in allseen means that it is already in an scc
-##    """
-##    global fi,fo,all_seen
-##    tbt = set([i]) #to be traced
-##    hit = set([]) #nodes hit so far
-##    while len(tbt)>0:
-##        x = tbt.pop() #get next one to trace
-##        hit.add(x) # have hit x now
-##        for j in fi[x]: #j in the fanin of x
-##            if j in all_seen or j in hit or j < 0: # eliminates any scc found in any fanout.
-##                continue
-##            tbt.add(j) #needs to be traced later
-##    return hit
-##
-##def tfo(i):
-##    """
-##    finds tfo of node i that are not already in an scc.
-##    j in allseen means that it is already in an scc
-##    """
-##    global fi,fo,all_seen
-##    tbt = set([i]) # to be traced
-##    hit = set([]) # nodes hit so far
-##    while len(tbt)>0:
-##        x = tbt.pop() # get next one to trace
-##        hit.add(x) # have hit x now
-##        for j in fo[x]: # j in the fanout of x
-##            if j in all_seen or j in hit: # eliminates any scc found in any fanout.
-##                continue
-##            tbt.add(j) # needs to be traced later
-##    return hit
-
-
-##def get_trace(sc,fnin):
-##    """ get supports of each scc of size > 1 in terms of sccs of size > 1"""
-##    global scc,fi,scc_map,d, mscc
-##    scc = list(sc)
-##    fi = list(fnin)
-##    scc_map = get_map(scc)
-##    mscc = range(n_init_pos)+[i for i in range(len(scc)) if len(scc[i]) > 1] #sccs with multiple nodes.
-##    fim = []
-##    d = dict([])
-##    for j in mscc: #only those of size >1
-##        trj = list(trace(j))
-##        trj.sort()
-##        trj = prpr(trj)
-##        fim.append([j,trj])
-##    return fim
-##
-##def trace(j):
-##    """
-##    finds the support of scc j in terms of sccs of size > 1
-##    """
-##    global scc,fi,scc_map,d, mscc
-##    if j in d:
-##        return d[j]
-##    fij = get_scfi(j,scc,fi,scc_map) #immediate scc fanins of scc j
-##    fim = set([])
-##    for k in fij:
-##        if not k in d:
-##            if k in mscc:
-##                trk = set([k])
-##            else:
-##                trk = trace(k)
-####            print trk
-##        else:
-##            trk = d[k]
-##        fim = fim | trk
-####        print fim
-##    d.update([[j,fim]])
-##    return fim # a set
 
 def print_pr(L):
     for j in range(len(L)):
@@ -9498,152 +9362,6 @@ def super_iso(part=0,ifisost=True):
 ##        eq = part_eq_iter(eq)
     return eq
 
-##def get_chains(scc,fi):
-##    scc_map = get_scmap(scc)
-##    mscc = range(n_init_pos)+[i for i in range(len(scc)) if len(scc[i]) > 1] #sccs with multiple nodes.
-####    print len(mscc)
-##    fim = []
-##    d = dict([])
-##    seen = set([])
-##    for j in mscc:
-##        fij = list(get_scfi(j,scc,fi,scc_map)) #scc fanin to scc j in mscc
-####        print '\n',len(fij)
-##        fijs = set([fij[k] for k in range(len(fij)) if fij[k] not in mscc])#keep only singleton fanin scc's
-####        print len(fijs)
-##        fijm = set([fij[k] for k in range(len(fij)) if fij[k] in mscc]) #terminal multiple scc
-####        print len(fijm)
-####        seen = set([])
-##        while len(fijs) > 0:
-##            
-##                
-##            m = fijs.pop()
-##            if m in d:
-##                
-##            elif m in seen:
-##                continue
-##            seen.add(m)
-####            print m,
-##            fij = list(get_scfi(m,scc,fi,scc_map))
-####            print len(fij),
-##            for k in range(len(fij)):
-##                if fij[k] in seen:
-##                    continue
-##                if fij[k] not in mscc:
-##                    fijs.add(fij[k])
-##                else:
-##                    fijm.add(fij[k])
-####        print 'j = %d'%j
-##        print 'terminals for %d: '%j,list(fijm)
-##        fim.append([j,list(fijm)])
-##    return fim
-
-
-
-##def tfi(i):
-##    """ 0 means not seen, 1 means seen but not traced, 2 means already traced"""
-##    global fi,fo,all_seen
-##    tfii= [0]*n_pos()
-##    tfii[i] = 1
-##    while True:
-##        if 1 not in tfii:
-##            break
-##        x = tfii.index(1) #get next one to trace
-##        f = fi[x]
-##        tfii[x] = 2 #set it tp 2 to indicated it was traced
-##        for j in f:
-##            if j < 0:
-##                continue
-##            if (not j in all_seen) and tfii[j] == 0: #eliminates any scc found in any fanin.
-##                tfii[j] = 1 #needs to be traced later
-##    return tfii
-
-
-##def tfo(i):
-##    """ 0 means not seen, 1 means seen but not traced, 2 means already traced"""
-##    global fi,fo,all_seen
-##    tfoi = [0]*n_pos()
-##    tfoi[i] = 1
-##    while True:
-##        if 1 not in tfoi:
-##            break
-##        x = tfoi.index(1) #get next one to trace
-##        f = fo[x]
-##        tfoi[x] = 2 #set it up so 2  indicates it was traced
-##        for j in f: #j in the fanout of x
-##            if (not j in all_seen) and tfoi[j] == 0: # eliminates any scc found in any fanout.
-##                tfoi[j] = 1 #needs to be traced later
-##    return tfoi
-
-
-##def get_supp_old(cl=[]):
-##    """ gets the union of the supports of a single isomorphic class."""
-##    sup_cl = []
-##    npi = n_init_pis #pis are CIs which are PIs,FF
-##    for i in range(len(cl)):
-##        #i is a flop number = #po + #FF[i]
-##        supi = co_supp(cl[i])
-##        supi = [supi[j]-npi for j in range(len(supi))] #shift so flops start at 0
-##        sup_cl= sup_cl + supi
-##    sup_cl.sort()   # sorted so can tell easily tell number of times a signal is repeated 
-##    return sup_cl
-
-##def fi_groups(sg=[],eq=[]):
-##    """ sg is the supps of each iso class. eq are the iso classes
-##    This code converts the inputs into iso-class inputs, but leaves the PIs (negative #)
-##    untouched. Note that each PO is part of some iso group. """
-##    gpf = get_gpf(eq) #assigns group number to each PO and flop
-##    fi = []
-##    for j in range(len(eq)):
-##        sgj = sg[j] #supp of group j
-##        mask = [sgj[i] > -1 for i in range(len(sgj))]
-##        ind = len(mask)+1
-##        if True in mask:
-##            ind = mask.index(True)#finds the first flop
-##        inps = sgj[:ind] #inputs
-##        inps = list(set(inps))
-##        flops = sgj[ind:] #flops of supports of iso-group j
-##        sgm = [gpf[flops[i]] for i in range(len(flops))] #map into flop groups
-####        sgm.sort()
-##        sgm = list(set(sgm)) #get rid of duplicates and sort
-##        sgm = inps+sgm
-##        sgm.sort()
-##        fi.append(sgm)
-##    return fi
-##
-
-
-##def get_gpf(eq = []):
-##    """ assigns group number to each PO and flop"""
-##    gpf = [-1 for i in range(n_init_pos+n_init_latches)] #initialize to all -1
-##    for j in range(len(eq)):
-##        eqj = eq[j]  #jth iso class
-##        for i in range(len(eqj)):
-##            gpf[eqj[i]] = j
-##    assert not -1 in gpf, '-1 in gpf'
-##    return gpf
-##
-##def fo_groups(fi=[]):
-##    """ get the fanout groups from the fanin groups"""
-##    fo = [[] for i in range(len(fi))]
-##    for i in range(len(fi)):
-##        fii = fi[i] #ith fanin group
-##        for j in range(len(fii)):
-##            if fii[j]> -1: # no a PI
-##                fo[fii[j]].append(i) # i is a fanout of fii[j]
-##    return fo
-##        
-##def print_gp(fo,fi=[]):
-##    """ prints classes with >1 members"""
-##    if fi == []:
-##        for i in range(len(fo)):
-##            if len(fo[i]) > 1:
-##                print '\n%d: '%i,fo[i]
-##    else:
-##        for i in range(len(fo)):
-##            if len(fo[i]) >1:
-##                print '\n%d: '%i,fi[i]
-##                print fo[i]
-##
 def count_fq(zz):
     """ x is a sorted list with repeats. returns a list of [count,value]
     where count is the number of times value is repeated in the list"""
@@ -9660,130 +9378,6 @@ def count_fq(zz):
             s=s+1
     return res
 
-
-
-##def find_common_fo(fi,fo):
-##    res = []
-##    for i in range(len(fo)):
-##        leni=len(fi[i])
-##        for j in range(len(fo))[i+1:]:
-##            if leni == len(fi[j]):
-##                res.append([i,j])
-##    return res
-##        
-##def find_common_fo_old(fi,fo):
-##    seen = []
-##    res = []
-##    for i in range(len(fo)):
-##        if i in seen:
-##            continue
-##        foi = fo[i]
-##        leni=len(fi[i])
-##        n=0
-##        for j in range(len(fo))[i+1:]:
-##            if fo[j] == foi and leni == len(fi[j]):
-####                if n == 0:
-####                    print '\n',fi[i]
-####                print fi[j]
-##                n=1
-##                seen.append(j)
-##                res.append([i,j])
-##    return res
-##
-##def try_match(co,eq):
-##    pairs = []
-##    for i in range(len(co)):
-##        coi=co[i]
-##        i1=False
-##        if is_func_iso(coi[0],coi[1]):
-##            i1 = True
-##            print 'if_is_iso wins'
-####            print coi, 'merging groups of sizes %d and %d'%(len(eq[coi[0]]),len(eq[coi[1]]))
-##            pairs.append(coi)
-##        if is_func_iso2(coi[0],coi[1]):
-##            print 'if_is_iso2 wins'
-##            if not i1:
-##                pairs.append(coi)
-##        return pairs
-
-
-##def try_pairs(eq):
-##    pair_proved = 0
-##    while True:
-##        sg = get_class_supp(eq) #needs the original comb aig. Restores reduced aig
-##        print 'sg done',
-####        print eq
-##        fi = fi_groups(sg,eq)
-##        print 'fi done',
-##        fo = fo_groups(fi)
-##        print 'fo done'
-##        co = find_common_fo(fi,fo)
-##        if co == []:
-##            print 'no candidate pairs found'
-##            break
-##        print 'candidate pairs found: %d'%len(co)
-####        print 'co done'
-##        pairs = try_match(co,eq)
-####        print 'pairs done'
-##        print 'pairs proved: ',len(pairs)
-##        if pairs == []:
-##            if not pair_proved:
-##                return eq
-##            else:
-##                break
-##        else:
-##            pair_proved = 1
-##        #need to remove non representative POs
-##        J = [pairs[i][1] for i in range(len(pairs))]
-####            print J
-##        remove(J)
-##        #now merge eq groups
-##        eq_new = []
-##        pi_rep = -1
-##        eqn = []
-##        for i in range(len(pairs)):
-##            pi = pairs[i]
-##            if not pi[0] == pi_rep: #start new group
-##                if not eqn == []:
-##                    eq_new.append(eqn) #save old group
-##                pi_rep = pi[0] #start a new iso group
-##                eqn = pi
-##            else:
-##                eqn.append(pi[1])
-##        if not eqn == []:
-##            eq_new.append(eqn) #save last one
-####            print 'eq_new:',eq_new
-##        if not eq_new == []:
-##            eq = mergeq(eq,eq_new)
-####            print_eq_counts(eq)
-##        else:
-##            break
-##    print 'iso class sizes and frequencies: ',
-##    print_eq_counts(eq)
-##    return eq
-
-    
-        
-##def mergeq(eq,eqn):
-##    """ combine each eq group in eqn into a representative delete non-reps"""
-##    res = list(eq)
-##    print eqn
-##    for i in range(len(eqn)):
-##        eqni = eqn[i]
-####        print eqni
-##        resi = []
-##        j0 = eqni[0] #representative
-####        print res[j0]
-##        for j in range(len(eqni)):
-##            resi = resi+eq[eqni[j]] #merging groups
-##            res[eqni[j]] = [] #deleting
-##        res[j0] = resi #replacing the representative
-####        print res[j0]
-##    R = []
-##    for i in range(len(eq)): #eliminate null groups
-##        if not res[i] == []:
-##            R.append(res[i])
-##    return R
 #____________end iso ____________________
 
 def factor_nsf():
@@ -9805,7 +9399,8 @@ def factor_nsf():
         run_command('clp;sop;pf')
         
 
-
+## Begin synthesis functions
+        
 def speed2_tradeoff(k=6,dec=1):
     print nl(),
     abc('write_blif %s_best_speed.blif'%f_name)
@@ -9813,7 +9408,7 @@ def speed2_tradeoff(k=6,dec=1):
     A_best = n_nodes()
     abc('st;&get')
     while True:
-        run_command('&syn2; &if -K 6 -C 16 -g;&synch2;&if -K 6 -C 16;&mfs;&put')
+        run_command('&syn2;&st; &if -K 6 -C 16 -g;&synch2;&st;&if -K 6 -C 16;&mfs;&put')
 ##        abc('speedup;if -D %d -F 2 -K %d -C 11'%(L,k))
         if n_levels() < L_best:
             L_best = n_levels()
@@ -9886,7 +9481,7 @@ def area_tradeoff2(k=6):
         L_old = n_levels()
         L = L_old +2
 ##        n_nodes_old = n_nodes()
-        abc('&get;&synch2; &if -f -D %d -F 1 -K %d -C 11;&put'%(L,k))
+        abc('&get;&st;&synch2;&st; &if -f -D %d -F 1 -K %d -C 11;&put'%(L,k))
         print nl()
         if n_nodes() < best:
             best = n_nodes()
@@ -9901,24 +9496,40 @@ def area_tradeoff2(k=6):
     print nl()
     return
 
+##def map_lut_dch_x(k=6,synch=1):
+##    '''minimizes area '''
+####    satlut(k)
+##    best = n_nodes()
+##    run_command('write_blif %s_best.blif'%f_name)
+##    if synch:
+##        abc('mfs2 -a  ;ps; lutpack ;ps')
+####        abc('st; &get;&synch2;&lf -am -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
+##    else:
+##        abc('st; dch;ps; if -a  -F 2 -K %d -C 11;ps; mfs2 -a  ;ps; lutpack ;ps'%k)
+##    if best <= n_nodes():
+##        run_command('read_blif %s_best.blif'%f_name)
+
 
 def map_lut_dch(k=6,synch=1):
     '''minimizes area '''
+##    satlut(k)
+    best = n_nodes()
+    run_command('write_blif %s_best.blif'%f_name)
     if synch:
-        abc('st; &get;&synch2;&if -a -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
+        abc('&get;&st;&synch2;&st;&if -a -K %d -F 2 -C 11'%k)
+        print n_nodes(),
+##        abc('&satlut')
+##        print 'satlut: %d'%n_nodes(),
+        abc('&put;mfs2 -a;lutpack')
+        print n_nodes(),
+##old        abc('st; &get;&synch2;&if -a -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
 ##        abc('st; &get;&synch2;&lf -am -K %d -F 2 -C 11;&put;mfs2 -a  ;ps; lutpack ;ps'%k)
     else:
         abc('st; dch;ps; if -a  -F 2 -K %d -C 11;ps; mfs2 -a  ;ps; lutpack ;ps'%k)
-##    abc('st; dch;ps; if  -F 2 -K %d -C 11;ps; mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
-##    abc('st; &get;&dch; &if  -a -F 2 -K %d -C 11;&put;ps; mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
-##    abc('st; dch;if -a -K %d -F 2 -A 1;mfs2 -a -L 50 ;lutpack -L 50;ps'%k)
+    if best <= n_nodes():
+        run_command('read_blif %s_best.blif'%f_name)
 
-##def map_lut_dch(k=6):
-##    '''minimizes area '''
-##    abc('st; &get;&synch2;&if -a -K 6 -F 2 -C 11;&put;mfs2 -a -L 50 ;ps; lutpack -L 50;ps'%k)
-
-
-def if_a_iter(k=6):
+def if_a_iter_old(k=6):
     best = n_nodes()
     run_command('write_blif %s_best.blif'%f_name)
     n=0
@@ -9939,13 +9550,34 @@ def if_a_iter(k=6):
                 break    
     abc('r %s_best.blif'%f_name)
 
+def if_a_iter(k=6):
+    best = n_nodes()
+    run_command('write_blif %s_best.blif'%f_name)
+    n=0
+    while True:
+        abc('&get;&st;&if -a -K %d;&satlut&put'%k)
+##        abc('lf -am -K %d'%k)
+        if n_nodes()< best:
+            assert check_blif(),'inequivalence'
+            best = n_nodes()
+            n = 0
+            abc('write_blif %s_best.blif'%f_name)
+            assert check_blif(),'inequivalence'
+            print nl(),
+            continue
+        else:
+            n = n+1
+            if n>2:
+                break    
+    abc('r %s_best.blif'%f_name)
+
 def if_synch_iter(k=6):
     best = n_nodes()
     run_command('write_blif %s_best.blif'%f_name)
-    abc('st; &get;&synch2 -K %d; &if -F 2 -K %d -C 11;&put;ps'%(k,k))
+    abc('&get;&st; &synch2 -K %d; &if -a -F 2 -K %d; &satlut; &put'%(k,k))
     n=0
     while True:
-        abc('st; &get;&synch2 -K %d; &if -F 2 -K %d -C 11;&put;ps'%(k,k))
+        abc('&get;&st; &synch2 -K %d; &if -a -F 2 -K %d ; &satlut; &put'%(k,k))
         if n_nodes()< best:
 ##            assert check_blif(),'inequivalence'
             best = n_nodes()
@@ -9978,6 +9610,7 @@ def map_lut_dch_iter(k=6,synch=1,alt=0,m=2):
         map_lut_dch(k,sy)
         if n_nodes()< best:
             best = n_nodes()
+            print '%d '%best,
 ##            print 'best=%d'%best
             n = 0
             abc('write_blif %s_best.blif'%f_name)
@@ -10010,30 +9643,30 @@ def checknl(np):
 
 def map_lut_synch(k=6):
     '''minimizes area '''
-    abc('st; &get;&synch2 -K %d; &ps; &if -F 2 -K %d -C 11 -E .1;&put;ps; mfs2 -a  ;ps; lutpack ;ps'%(k,k))
+    abc('&get;&st; &synch2 -K %d; &ps; &st; &if -F 2 -K %d -C 11 -E .1;&put;ps; mfs2 -a  ;ps; lutpack ;ps'%(k,k))
     
-##def map_lut_synch_iter(k=6):
-####    print 'entering map_lut_dch_iter with k = %d'%k
-##    best = n_nodes()
-####    print best
-####    print nl()
-##    run_command('write_blif %s_best.blif'%f_name)
-##    n=0
-####    print nl()
-##    while True:
-##        map_lut_synch(k)
-##        if n_nodes()< best:
-##            best = n_nodes()
-####            print 'best=%d'%best
-##            n = 0
-##            abc('write_blif %s_best.blif'%f_name)
-##            print nl(),
-##            continue
-##        else:
-##            n = n+1
-##            if n>2:
-##                break    
-##    abc('r %s_best.blif'%f_name)
+def map_lut_synch_iter(k=6):
+##    print 'entering map_lut_dch_iter with k = %d'%k
+    best = n_nodes()
+##    print best
+##    print nl()
+    run_command('write_blif %s_best.blif'%f_name)
+    n=0
+##    print nl()
+    while True:
+        map_lut_synch(k)
+        if n_nodes()< best:
+            best = n_nodes()
+##            print 'best=%d'%best
+            n = 0
+            abc('write_blif %s_best.blif'%f_name)
+            print nl(),
+            continue
+        else:
+            n = n+1
+            if n>2:
+                break    
+    abc('r %s_best.blif'%f_name)
 
 def dmitri_iter(k=8):
     best = 100000
@@ -10058,7 +9691,7 @@ def shrink():
     tm = time.time()
     best = n_ands()
     while True:
-        abc('&get;&if -K 4 -F 1 -A 0 -a;&shrink;&put')
+        abc('&get;&st;&if -K 4 -F 1 -A 0 -a;&shrink;&put')
         print n_ands(),
         if n_ands()< .99*best:
             best = n_ands()
@@ -10069,12 +9702,12 @@ def shrink():
 
 def shrink_lut():
     tm = time.time()
-    abc('&get;&if -K 4 -F 1 -A 0 -a;&put')
+    abc('&get;&st;&if -K 4 -F 1 -A 0 -a;&put')
     best = n_nodes()
     print best,
     abc('&shrink')
     while True:
-        abc('&if -K 4 -F 1 -A 0 -a;&put')
+        abc('&st;&if -K 4 -F 1 -A 0 -a;&put')
         print n_nodes(),
         if n_nodes() < .99*best:
             best = n_nodes()
@@ -10199,7 +9832,7 @@ def try_extract():
     ps()
     na = n_ands()
 ##    abc('w %s_savetemp.aig'%f_name)
-    #no need to save initial aig since fork_best will return initial if best.
+    #no need to save initial aig since fork_best will return initial if best
     J = [32,33]
     mtds = sublist(methods,J)
     F = create_funcs(J,0)
@@ -10237,17 +9870,19 @@ def speedup_iter(k=8):
 
 def jog(n=16):
     """ applies to a mapped blif file"""
-##    print ''
+    print 'jogging'
+    run_command('if -a -K %d'%(n/2))
+    #ps()
+    run_command('eliminate -V 5 -N %d'%n)
+    #ps()
+    run_command('sop;fxch')
 ##    ps()
-    run_command('eliminate -N %d'%n)
+##    run_command('st;if -K %d'%(n/2))
 ##    ps()
-    run_command('sop;fx')
+##    run_command('sop;fxch')
 ##    ps()
-    run_command('st;if -K %d'%(n/2))
-##    ps()
-    run_command('sop;fx')
-##    ps()
-    print ''
+    print 'done jogging'
+    ps()
     
 
 ##def perturb_f(k=4):
@@ -10258,14 +9893,17 @@ def jog(n=16):
 ####    snap()
 ####    abc('if -a -K %d -C 11 -F 2;mfs -a -L 50;lutpack -L 50'%k
 
-def perturb(k=4):
+def perturb(k=6):
 ##    ps()
-    run_command('st;dch;if -g -K %d;if -K %d'%(k,k))
+##    run_command('&get;&st;&put;dch;if -g -K %d;if -K %d'%(k,k))
+    run_command('&get;&st;&synch2;&if -g -K %d;&st;&if -K %d;&put'%(k,k))
+    ps()
+    snap()
+    run_command('speedup;&get;&st;&if -K %d -C 10;&put'%(k))
 ##    ps()
+    jog(5*k)
 ##    snap()
-    run_command('speedup;if -K %d -C 10'%(k))
-##    ps()
-##    jog(5*k)
+    ps()
     
 ##def preprocess_2(k=6,ifprep=1):
 ##    global bestk
@@ -10352,10 +9990,10 @@ def try_clp(k=6,bk=100000):
     t1 = time.time()
     run_command('clp')
     nn = n_nodes()
-    abc('muxes;st')
+    run_command('muxes;st')
     if not nn == n_nodes(): #st worked
         abc('dc2')
-        map_lut_dch(6)
+        map_lut_dch(k)
         print '\nclp: ', nl()
         nn = n_nodes()
     run_command('st')
@@ -10491,7 +10129,36 @@ def unsave_bestk(k):
 
 def snap():
 ##    abc('fraig;fraig_store')
-    run_command('fraig_store')
+    run_command('&get;&st;&put;fraig_store')
+
+def fxch_store(k=6):
+    run_command('fraig_store;sop;fxch;eliminate;fraig_store;eliminate -V 5;fraig_store;fraig_restore;if -a -K %d'%k)
+##    ps()
+    run_command('&get;&if -a -K %d;&satlut;&put'%k)
+##    ps()
+
+def fx_iter(k=6):
+    best = n_nodes()
+    run_command('write_blif %s_best.blif'%f_name)
+    n=0
+    while True:
+        fxch_store(k)
+##        print 'done',
+        print n_nodes()
+##        abc('if -am -K %d'%k)
+        if n_nodes()< best:
+            assert check_blif(),'inequivalence'
+            best = n_nodes()
+            n = 0
+            abc('write_blif %s_best.blif'%f_name)
+            assert check_blif(),'inequivalence'
+            continue
+        else:
+            n = n+1
+            if n>2:
+                break    
+    abc('r %s_best.blif'%f_name)
+
         
 def unsnap(k=6):
 ##    snap()
@@ -10516,7 +10183,7 @@ def map_until_conv(k=6,prep=1):
     global pairs
 ##    pairs = []
     kk = 2*k
-    kk = k + 1
+##    kk = k + 1
     # make sure that no residual results are left over.
     if True:
         if os.access('%s_best%d.blif'%(f_name,k),os.R_OK):
@@ -10536,28 +10203,16 @@ def map_until_conv(k=6,prep=1):
         print nl()
     else:
         print 'preprocess entered'
-        res = preprocess(ifprep = prep) #get best of initial, clp, and lutmin versions
+        res = preprocess(k=k,ifprep = prep) #get best of initial, clp, and lutmin versions
         print nl()
         print 'preprocess done'
         bestk = save_bestk(100000,k)
     print 'starting mapping iteration with %d-LUTs'%k
-    map_lut_dch_iter(k,1,0,1) #initialize with mapping with kk input LUTs
+##    map_lut_dch_iter(k,1,0,1) #initialize with mapping with kk input LUTs
 ##    map_lut_synch_iter(kk) PUT IN QUICKER TERMINATTOR
+    if_synch_iter(k)
     bestk = save_bestk(bestk,k)
-##    snap() #puts in bestkk in fraig store.
-##    bestk = unsave_bestk(k)
-####    bestk = n_nodes()
-##    snap()
-####    snap_bestk(k) #temporary - puts bestk in fraig store
-##    #*** warning unsnap can hang up because of fraig_restore****
-##    unsnap(k) #have to do snap first if want current result snapped in.
-##        # unsnap fraigs snapshots and does map_lut_dch at end
-##    print 'result of fraig_restore, if with choices, mfs2, and lutpack'
-##    print nl()
-##    assert check_blif(),'inequivalence'
-##    if_a_iter(k)
-##    bestk = save_bestk(bestk,k)
-    print nl()
+    print nl(), k, kk
     abc('r %s_bestk%d.blif'%(f_name,k))
     print 'iterating map'
     map_iter(k) #1
@@ -10565,8 +10220,9 @@ def map_until_conv(k=6,prep=1):
     bestkk = 1000000
     while True:
         print '\nPerturbing with %d-Lut'%kk
-        map_lut_dch_iter(kk,1,0,1)
-##        map_lut_synch_iter(kk)
+##        map_lut_dch_iter(kk,1,0,1)
+##        if_synch_iter(k)
+        map_lut_synch_iter(kk)
         bestkk_old = bestkk
         bestkk = save_bestk(bestkk,kk)
         if bestkk >= bestkk_old:
@@ -10583,7 +10239,10 @@ def map_until_conv(k=6,prep=1):
         continue
     abc('fraig_restore') #dump what is left in fraig_store
     unsave_bestk(k)
-    if_a_iter(k)
+##    if_a_iter(k)
+    if_synch_iter(k)
+##    run_command('&get;&satlut;&put')
+##    satlut(k)
     bestk = save_bestk(bestk,k)
     unsave_bestk(k)
     print '\nFinal size = ',
@@ -10606,24 +10265,28 @@ def map_iter(k=6):
 ##    bestk = n_nodes()
     while True:
         print 'perturbing'
-##        abc('if -a -K %d'%(k+2))
-##        snap()
+        abc('if -a -K %d'%(k+2))
+        snap()
         perturb(k) #
-##        snap()
-##        perturb(k)
-##        snap()
+        snap()
+        perturb(k)
+        snap()
         old_bestk = bestk
-##        unsnap(k)
+        unsnap(k)
+        abc('if -a -K %d'%k)
 ##        map_lut(k)
-##        bestk = save_bestk(bestk,k)
-        print 'iterating map_lut_dch'
-        if_a_iter(k)
-        print '#nodes after if_a_iter = %d'%n_nodes()
-        if n_nodes() > 1.2*bestk:
+        bestk = save_bestk(bestk,k)
+##        print 'iterating map_lut_dch'
+##        if_a_iter(k)
+##        if_synch_iter(k)
+##        print '#nodes after if_synch_iter = %d'%n_nodes()
+####        print '#nodes after if_a_iter = %d'%n_nodes()
+####        if n_nodes() > 1.2*bestk: rkb-temp
+        if n_nodes() > 2*bestk:
             print 'perturbation too big'
             break 
         map_lut_dch_iter(k)
-        if n_nodes() > 1.1*bestk:
+        if n_nodes() > 1.5*bestk:
             print 'not enough progress'
             break
         bestk = save_bestk(bestk,k)
@@ -10634,6 +10297,16 @@ def map_iter(k=6):
         elif n == 2: #perturb 
             break
         else:
+            print 'trying fx_iter'
+            fx_iter(k)
+            if n_nodes() > 1.5*bestk:
+                print 'not enough progress'
+                break
+            bestk = save_bestk(bestk,k)
+##        print bestk
+            if bestk < old_bestk:
+                n=0 # keep it up
+                continue
             n = n+1
             print '%d-perturb'%n
     unsave_bestk(k)
@@ -10659,7 +10332,13 @@ def check_blif():
 ##        print'OK',
     abc('read_blif %s_bb.blif'%f_name)
     return res
-        
+
+def satlut(k=6):
+    if k <= 6:
+        run_command('&get;&st;&if -a -K %d;&satlut;&put'%k)
+    else:
+        run_command('&get;&st;&if -a -K %d;&put'%k)
+##    ps()
 
 def map_star(k=6):
     global pairs
@@ -10671,7 +10350,7 @@ def map_star(k=6):
     assert check_blif(),'inequivalence'
     best = n_nodes()
     while True:
-##        jog(2*k)
+        jog(2*k)
         print '\n*************Starting next map_until_conv**: \n'
         map_until_conv(k,0)
         if n_nodes() >= best:
@@ -10780,7 +10459,7 @@ def sizeof():
     return [n_pis(),n_pos(),n_latches(),n_ands()]
 
 def abstract(ifb=2):
-    global abs_ratio
+    global abs_ratio, abs_time
 ##    print 'ifb = %d'%ifb
     if ifb == 0: #new way using vta_abs and no bip
         add_trace('abstracta')
@@ -10802,7 +10481,7 @@ def abstracta(if_bip=True):
     if_bip = 1, we use ,abs -dwr
     """
     global G_C, G_T, latches_before_abs, x_factor, last_verify_time, x, win_list, j_last, sims
-    global latches_before_abs, ands_before_abs, pis_before_abs, abs_ratio
+    global latches_before_abs, ands_before_abs, pis_before_abs, abs_ratio, abs_time
 ##    n_vabs = 0
     latches_before_abs = n_latches()
     ands_before_abs = n_ands()
@@ -11024,30 +10703,18 @@ def gla_abs_iter(t):
         """
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
     it_interval = 10000 
-    total = t
-    #temp
     total = 10000 #do not want &gla to timeout by itself
-    #temp
     tt = time.time()
     run_command('orpos;&get')
-##    run_command('&w %s_gla.aig'%f_name)
     abs_depth = abs_depth_prev = 0
-##    while True:
-##    r = 100 *(1 - abs_ratio)
     r = 100*abs_ratio
-##    r = 75 #############TEMP
     q = 99 #############TEMP
-##    run_command('&r %s_gla.aig'%f_name)
     time_remain = total - (time.time() - tt) #time remaining
     it = min(it_interval,time_remain)
-##    if it < 2:
-##        break
-    #gla and vabs are the file with the abstraction info and gabs is the derived file.
-    cmd = '&gla -mvs -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d -B 1'%(f_name,it,r,q,abs_depth)
+    cmd = '&gla -m -B 1 -A %s_vabs.aig -T %d -R %d -Q %d -S %d -B 1'%(f_name,it,r,q,abs_depth)
     print 'Executing %s'%cmd
     name = '%s_vabs.aig'%f_name
     name_old = '%s_vabs_old.aig'%f_name
-##    run_command(cmd)
     run_command(cmd)
     if os.access(name,os.R_OK):
         print 'New abstraction written. Possibly grew too big'
@@ -11063,21 +10730,6 @@ def gla_abs_iter(t):
     print 'wrote %s_gla file'%f_name
     run_command('&gla_derive;&put')
     run_command('w %s_gabs.aig'%f_name)
-##        break
-##        abs_depth_prev = abs_depth
-##        abs_depth = n_bmc_frames()
-##        print 'abs_depth = %d'%abs_depth
-##        #test here if done
-##        if (time.time()-tt) > total:
-##            break
-##        print 'reading abs_values'
-##        read_abs_values()
-##        print 'values read'
-##        if abs_done(time_remain):
-##            print 'abs_done'
-##            break
-##        else:
-##            continue
     
 def read_abs_values():
     """here we read in the abs values written by monitor and prove"""
@@ -11172,34 +10824,28 @@ def monitor_and_prove():
     cex_abs_depth = 0
     abs_depth = abs_depth_prev = 0
     write_abs_values()
-##    if read_and_sleep(5): # wait until first abstraction when res is False
-##        #time has run out as controlled by abs_time
-##        return [Undecided_no_reduction] + ['read_and_sleep']
     t = abs_time
     t=10000 # do not want side engines to time out
     tt = time.time()
     abs_bad = 1 # start out with abstraction bad because it does not exist
-##    print 'first read and sleep done'
     #a return of Undecided means that abstraction might be good and calling routine will check this
     while True: #here we iterate looking for a new abstraction and trying to prove it
         time_done = 0
         funcs = [eval('(pyabc_split.defer(read_and_sleep)())')]
-        J = sims+intrps+pdrs+bmcs
-        J = modify_methods(J,1)
+        #J = sims+intrps+pdrs+bmcs
+        J = intrps+[0,7,34,43,45] # temp
+        #J = modify_methods(J,1)
         funcs = funcs + create_funcs(J,t) 
         mtds = ['read_and_sleep'] + sublist(methods,J)
         print 'methods = %s'%mtds
         monitor_done = False
         for i,res in pyabc_split.abc_split_all(funcs):
-##            print 'Mon. & Pr.: ,
-##            print i,res
             if i == 0: # read_and_sleep terminated
                 if res == False: #found new abstraction
                     read_abs_values()
                     set_max_bmc(abs_depth-1,True)
                     time_abs_prev = time_abs
                     time_abs = time.time()
-##                    print 'time between new abstractions = %0.2f'%(time_abs - time_abs_prev)
                     write_abs_values()
                     abs_bad = 0 #new abs starts out good.
                     if not initial_size == sizeof() and n_latches() > abs_ratio * initial_size[2]:
@@ -11214,12 +10860,9 @@ def monitor_and_prove():
                     else: #abs is still good. Let other engines continue
                         monitor_done = True
                         continue
-##                        return [Undecided]+['read_and_sleep'] #calling routine handles >Unsat all the same right now.
                 else:
                     assert False, 'something wrong. read and sleep did not return right thing'
             if i > 0: #got result from one of the verify engines
-##                print 'Monitor_and_Prove: Method %s ended'%mtds[i]
-##                print i,res
                 if res == None:
                     print 'Method %s failed'%mtds[i]
                     continue
@@ -11267,13 +10910,6 @@ def monitor_and_prove():
         elif abs_bad and time_done:
             print 'current abstraction bad, time has run out'
             return [Undecided_no_reduction]+['no reduction']
-##        elif time_done: #abs is good here
-##            continue
-##            # here we keep going even thought  time is done because the abstraction might
-##            #be proved correct. rkb this an experiment
-####            print 'current abstraction still good, time has run out'
-##            return [Undecided]+['reduction'] #this will cause calling routine to try to verify the final abstraction
-##                            #right now handles the same as Undecided_no_reduction-if time runs out we quit abstraction
         else: #abs good 
             continue #continue even if time_done
 ##            print 'current abstraction still good, time has not run out'
@@ -11281,9 +10917,10 @@ def monitor_and_prove():
 
 def read_and_sleep(t=5):
     """
-    keep looking for a new vabs every 5 seconds. This is usually run in parallel with
-    &vta -d or &gla
-    Returns False when new abstraction is found, and True when time runs out.
+    keeps looking for a new vabs every 5 seconds. This is usually run
+    in parallel with &vta -d or &gla_iter
+    when new abstraction is found returns False, and
+    returns True when time runs out.
     """
     global cex_abs_depth, abs_depth, abs_depth_prev, time_abs_prev, time_abs
     #t is not used at present
@@ -11292,25 +10929,26 @@ def read_and_sleep(t=5):
     set_size()
     name = '%s_vabs.aig'%f_name
     name_old = '%s_vabs_old.aig'%f_name
-    sleep(5)
+    #sleep(5) #should remove this if &gla first writes a null map
     while True:
         if (time.time() - tt) > T: #too much time between abstractions
             print 'read_and_sleep timed out after %d sec. between abstractions'%T
             return True
         if os.access(name,os.R_OK):
             #possible race condition
-            run_command('&r -s %s; &w %s_vabs_old.aig'%(name,f_name)) #save in old
+            run_command('&r -s %s; &w %s_vabs_old.aig'%(name,f_name))
+            #save new vabs in old
 ##            print '%s exists'%name
-            if not os.access(name,os.R_OK): #if not readable now then what was read in might not be OK.
+            if not os.access(name,os.R_OK): #if new not readable now then what was read in might not be OK.
                 print '%s does not exist'%name
                 continue
-            os.remove(name) #remove the new one
+            os.remove(name) #remove the new one - it is in memory now
             run_command('read_status %s_vabs.status'%f_name)
             #name is the derived model (not the model with abstraction info
             if os.access(name_old,os.R_OK):
                 run_command('&r -s %s_vabs_old.aig'%f_name)
                 run_command('&w %s_gla.aig'%f_name)
-                run_command('&gla_derive;&put')
+                run_command('&gla_derive;&put') #abstraction derived  from vabs file
                 run_command('w %s_gabs.aig'%f_name)
     ##            print '%s is removed'%name
                 read_abs_values()
@@ -11329,10 +10967,10 @@ def read_and_sleep(t=5):
                     ps()
                     set_size()
                     abc('w %s_abs.aig'%f_name)
-                    return False
+                    return False #new abstraction is found so return to read&sleep
                 #if same size, keep going.
         print '.',
-        sleep(5)
+        sleep(5) #repeat in 5 sec.
 
         
 ######################## FINDING ADDER ############################

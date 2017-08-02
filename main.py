@@ -286,11 +286,11 @@ def convert_ibm():
 def cl():
     cleanup()
 
-def cleanup():
+def cleanup(safe=True):
     list = os.listdir('.') 
     for j in range(len(list)):
         name = list[j]
-        if ((s_in_s('_smp',name)) or (s_in_s('_save', name)) or (s_in_s('_gore', name)) or 
+        if ((s_in_s('_smp_',name)) or (s_in_s('_save', name)) or (s_in_s('_gore', name)) or 
             (s_in_s('_bip', name)) or (s_in_s('_sm0', name)) or (s_in_s('_gabs', name)) 
             or (s_in_s('_temp', name)) or (s_in_s('__', name)) or (s_in_s('_greg', name)) or (s_in_s('tf2', name))
             or (s_in_s('_gsrm', name)) or (s_in_s('_rpm', name )) or (s_in_s('_gsyn', name)) or (s_in_s('beforerpm', name))
@@ -305,6 +305,8 @@ def cleanup():
             or (s_in_s('_unsolv', name)) or (s_in_s('_iso1', name)) or (s_in_s('_sc', name))
             or (s_in_s('_best', name))
             ):
+            os.remove(name)
+        if s_in_s('_smp',name) and not safe:
             os.remove(name)
         
 def xcl():
