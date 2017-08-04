@@ -137,7 +137,7 @@ t_init = 2 #initial time for poor man's concurrency.
 def set_global(s=''):
     global G_C,G_T,latches_before_abs,latches_before_pba,n_pos_before,x_factor,methods,last_winner
     global last_cex,JV,JP, cex_list,max_bmc, last_cx, pord_on, trim_allowed, temp_dec, abs_ratio, ifbip
-    global if_no_bip, gabs, gla, sec_options,last_gasp_time,abs_ref_time, abs_time,use_pms
+    global if_no_bip, gabs, gla, sec_options,last_gasp_time,abs_ref_time, abs_time,use_pms, engines
     exec(s)
 
 
@@ -148,7 +148,15 @@ methods = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
            'run_parallel','INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim','simplify', 'speculate',
            'quick_sec', 'BMC_J', 'BMC2', 'extract -a', 'extract', 'PDRa', 'par_scorr', 'dsat',
            'iprove','BMC_J2','splitprove','pdrm_exact', 'AVY', 'PDRae', 'PDRMnc', 'PDRMyuf',
-           'PDRMnct'] 
+           'PDRMnct']
+engines = ['PDR', 'INTRP', 'BMC', 'SIM', 'REACHX',
+           'PDRM', 'REACHM', 'BMC3',
+           'REACHP','REACHN','PDR_sd',
+           'PDRM_sd',
+           'INTRPb', 'INTRPm', 'REACHY', 'REACHYc','RareSim',
+           'BMC_J', 'BMC2', 'PDRa',  'dsat',
+           'iprove','BMC_J2','pdrm_exact', 'AVY', 'PDRae', 'PDRMnc', 'PDRMyuf',
+           'PDRMnct' , 'bmc_jump']
 
 #'0.PDR', '1.INTERPOLATION', '2.BMC', '3.SIMULATION',
 #'4.REACHX', '5.PRE_SIMP', '6.simple', '7.PDRM', '8.REACHM', 9.BMC3'
@@ -322,7 +330,7 @@ def initialize():
     final_all = 1
     final_all = 0
     scorr_T_done = 0
-    last_gap = 0
+    last_gap = 50
     max_pos = 1000
     pairs = []
 ##    abs_time = 100
@@ -2546,16 +2554,20 @@ def speculate(t=0):
 ##    return mx
 
 def smpl(check_trace=True):
+    check_trace = False #temp
     b=bmc3(5)
     get_bmc_depth(True)
     if b == 'SAT' and check_trace:
+        abc('w %s_save.aig'%f_name)
         unmap_cex()
         report_cex(1)
+        abc('r %s_save.aig'%f_name)
         return ['SAT']+['bmc3']
     else:
         return simple()
 
 def simple(t=100000,no_simp=0,check_trace=True):
+    check_trace = False #temp
     y = time.time()
 ##    pre_simp()
     if not no_simp:
@@ -2563,8 +2575,10 @@ def simple(t=100000,no_simp=0,check_trace=True):
         prove_part_1(frames_2=True) #use try_frames_2
         if is_sat():
             if check_trace:
+                abc('w %s_save.aig'%f_name)
                 unmap_cex()
                 report_cex(1)
+                abc('r %s_save.aig'%f_name)
             return ['SAT']+['pre_simp']
         if is_unsat():
             return ['UNSAT']+['pre_simp']
@@ -2577,10 +2591,14 @@ def simple(t=100000,no_simp=0,check_trace=True):
     mtds = sublist(methods,J)
     print mtds
     result = verify(J,t)
+    
     if is_sat():
+        print 'cex_po() = ', cex_po()
         if check_trace:
+            abc('w %s_save.aig'%f_name)
             unmap_cex()
             report_cex(1)
+            abc('r %s_save.aig'%f_name)
 ##    add_pord('%s by %s'%(result[0],result[1])
     return [RESULT[result[0]]] + [result[1]]
 
@@ -4326,14 +4344,18 @@ def sp_iter(t=200,L=[],globs=[[],[],[],[],0,[]]):
         jmp = result[1] == 'bmcjmps'
 ##        print POs
         if result[0] == 'SAT' or result[0] == 0:
-##            print cex_po(),POs
+##            assert cexpo == cex_po(), 'cexpo,cex_po() = %d,%d'%(cexpo,cex_po())
+            print 'cex_po(), POs: ' , cex_po(),POs
             if jmp:
                 cxf = cex_frame()
             else: #simple got it so not reliable depth
                 cxf = min(cxf+1,cex_frame())
-            cx = cex_po()
+##            cx = cex_po()
+            cx =cex_po()
+            
             assert cx <len(POs) and cx > -1,'cx = %d'%cx
             px = POs[cx] #mapped into associated PO of L2 (=LL)
+            print 'cx,px: ', cx,px
             assert px < len(LL),'px = %d, len(LL) = %d'%(px,len(LL))
             assert LL[px] == -1,'px = %d, LL[px] = %d'%(px,LL[px])
             LL[px] = 1
@@ -4396,6 +4418,7 @@ def avg(L):
 def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
     """Alias for super_prove, but also resolves cex to initial aig"""
     global initial_f_name
+    check_trace = False #temp
     print '\n               *** Executing super_prove ***'
     print '%s: '%f_name,
     ps()
@@ -4412,10 +4435,12 @@ def sp(n=0,t=200001,check_trace=True): #check_trace = True for hwmcc15
 ##    print 'sp: ',
 ##    print result
     if result[0] == 'SAT' and check_trace:
+        abc('w %s_save.aig'%f_name)
         res = unmap_cex()
         result1 = result[1]+ res
         result = ['SAT'] + result1
         report_cex(1) #0 writes the unmapped cex into a cex file called init_initial_f_name_cex.status and 1 to stdout
+        abc('r %s_save.aig'%f_name)
     report_bmc_depth(max(max_bmc,n_bmc_frames()))
     return result
 
@@ -5595,7 +5620,7 @@ def list_v_pos(v=0):
             L = L + [j]
     return L
 
-def mprove2(L=0,op='simple',t=100,Fnn=0,globs=[[],[],[],[],0,[]]):
+def mprove2(L=0,op='simple',t=200,Fnn=0,globs=[[],[],[],[],0,[]]):
     global _L_last, f_name, skip_spec, last_gasp_time
     print 'mprove2 entered' ,
     if L == 0:
@@ -6862,27 +6887,27 @@ def par_multi_sat(t=10,gap=0,m=1,H=0):
         if t < 1000:
             if not t == 0:
                 if gap == 0:
-                    gap = max(.2,.2*t)
+                    gap = max(.2,.5*t)
                     gap = max(15,gap)
                 if gap > t:
                     t=gap
                 t,gt = set_t_gap(t,gap)
                 gt = max(15,gt)
                 if gt <= last_gap:
-                    gt = 1.2*last_gap
+                    gt = 1.3*last_gap
             else:
                 t = gt = 5
             if gt > t:
                 t = gt
             last_gap = gt
         ##    H = max(100, t/n_pos()+1)
-            if not H == 0: #se timeout peer output
+            if not H == 0: #set timeout limit per output
                 H = (gt*1000)/n_pos()
                 H = max(min(H,1000*gt),100)
     else:
         gt = gap = t
     tme = time.time()
-    tt = 1.1*t
+    tt = 1.3*t
     list0 = listr_v_pos(v=0) #reduces POs
     list0.sort()
 ##    print 'list0 = %s'%str(list0)
@@ -6900,6 +6925,7 @@ def par_multi_sat(t=10,gap=0,m=1,H=0):
     mx = 1000000000/max(1,n_latches())
     N = n_pos()
     na = n_ands()
+    print 't,gap,H = ',(t,gt,H)
     F = [eval('(pyabc_split.defer(bmc3az)(t,gt,%d,H))'%(0))]
 ##    if na < 50000:
     F = F + [eval('(pyabc_split.defer(pdraz)(t,gt,H))')] #need pdr in??
@@ -7186,6 +7212,7 @@ def par_bss(t,s):
     mtds = mtds[:3]
 ##    print mtds
     i,res = fork(funcs,mtds) #all these should be returning 'SAT', 'UNSAT'...
+    #assert cexpo == cex_po(), 'cexpo,cex_po() = %d,&d'%(cexpo,cex_po())
     print mtds[i],res
     return res
                           
@@ -7887,15 +7914,21 @@ def fork_break(funcs,mtds,BREAK='US'):
                 if methods.index(M) in exbmcs+allreachs+allpdrs+[1]: #set the known best depth so far. [1] is interp
                     set_max_bmc(n_bmc_frames(),True)
             last_cex = M
-            print '%s: -- cex in %0.2f sec. at depth %d in output %d => '%(M,t,cex_frame(),cex_po()),
-            cex_list = cex_list+[cex_get()] #accumulates multiple cex's and puts them on list.
-            if len(cex_list)>1:
-                print 'len(cex_list): %d'%len(cex_list)
+            if M in engines: #in recursive calls after a sat result lwe may come through here more than once we want to record the underlying
+                    #PO that was found SAAT by a true engine.
+##                print cex_po()
+##                cexpo = cex_po() #store this because it  might get corrupted????
+                print '%s: -- cex in %0.2f sec. at depth %d in output %d => '%(M,t,cex_frame(),cex_po()),
+                cex_list = cex_list+[cex_get()] #accumulates multiple cex's and puts them on list.
+                if len(cex_list)>1:
+                    print 'len(cex_list): %d'%len(cex_list)
             if 'S' in BREAK:
                 break
         else:
             continue
     add_trace('%s by %s'%(RESULT[status],M))
+##    if status == Sat:
+##        assert cexpo == cex_po(), 'cexpo,cex_po() = %d,%d'%(cexpo,cex_po())
     return i,[status]+[M]
 
 def fork_best(funcs,mts):
@@ -8038,6 +8071,8 @@ def fork(funcs,mtds):
         #print 'verify time increased to %s'%convert(t)
     assert res[0] == get_status(),'res: %d, status: %d'%(res,get_status())
 ##    add_trace('%s by %s'%(RESULT[res[0]],mtds[i]))
+    
+##    assert cexpo == cex_po(), 'cexpo,cex_po() = %d,%d'%(cexpo,cex_po())
     return i,res
 
 def save_time(M,t):
