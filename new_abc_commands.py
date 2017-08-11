@@ -244,7 +244,6 @@ proof_command_wrapper(par.mp,  'HWMCC', '/multi_prove_aiger',  0, write_cex=True
 
 def simple_liveness_prooffunc(aig_filename):
 
-
     try:
         import liveness
     except:
@@ -309,3 +308,37 @@ def simple_liveness_prooffunc(aig_filename):
         traceback.print_exc()
 
 proof_command_wrapper_internal( simple_liveness_prooffunc, "HWMCC", "/simple_liveness_aiger", 0, multi=True)
+
+@contextmanager
+def frame_done_callback(callback):
+    old_callback = pyabc.set_frame_done_callback(callback)
+    try:
+        yield
+    finally:
+        pyabc.set_frame_done_callback(old_callback)
+
+def bmcs_prooffunc(aig_filename):
+    
+    def callback(frame, po, result):
+        
+        if result == 0:
+            par.report_bmc_depth(frame)
+
+        print 'callback: ', frame, po, result
+
+    pyabc.run_command('read "%s"'%aig_filename)
+    pyabc.run_command('&get')
+
+    with frame_done_callback(callback):
+        pyabc.run_command('&bmcs -v')
+
+    status = pyabc.prob_status()
+
+    if status == pyabc.SAT:
+        return 'SAT'
+    elif status == pyabc.UNSAT:
+        return 'UNSAT'
+    else:
+        return 'UNKNOWN'
+
+proof_command_wrapper_internal( bmcs_prooffunc, "HWMCC", "/bmcs_aiger", 0, multi=False, bmc_depth=True, write_cex=True)
