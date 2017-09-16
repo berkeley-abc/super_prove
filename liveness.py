@@ -127,6 +127,7 @@ def run_niklas_single(aiger, simplify, report_result, super_prove=None, timeout=
     ]
     
     simplified_args = [
+        [ ',live', '-k=l2s', '-eng=treb-abs' ],
         [ ',live', '-k=inc' ],
         [ ',live', '-k=l2s', '-eng=bmc' ],
         [ ',live', '-k=l2s', '-eng=treb' ],
