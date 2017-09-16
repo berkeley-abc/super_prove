@@ -7,7 +7,9 @@ import re
 import json
 from collections import namedtuple, defaultdict
 
-import pyzz
+import pyaig
+from pyaig import AIG
+
 from pyabc import split
 
 
@@ -68,20 +70,96 @@ class message(object):
 
     def putu(self, x):
         while x >= 0x80:
-            self.data.append( x | 0x80)
+            self.data.append( x&0x7F | 0x80 )
             x >>= 7
         self.data.append(x)
 
     def put_str(self, s):
         self.data.extend(s)
 
-    def put_netlist(self, N):
-        data = pyzz.marshal_netlist(N)
-        self.data.extend( data )
-
     def put_archive(self, x):
         self.data.extend(x.data)
 
+    def put_aig(self, aig):
+
+        M = AIG.fmap(negate_if_negated=lambda f, c: f^c)
+
+        n_const = 2
+        M[ AIG.get_const1() ] = 2
+
+        # PIs
+
+        n_pis = aig.n_pis()
+        self.putu(n_pis)
+
+        for i, pi in enumerate(aig.get_pis()):
+            M[ pi ] = (n_const + i) << 1
+
+        # Latches
+
+        n_latches = aig.n_latches()
+        self.putu(n_latches)
+
+        for i, ll in enumerate(aig.get_latches()):
+            M[ ll ] = (n_const + n_pis + i) << 1
+
+        # Gates
+
+        n_ands = aig.n_ands()   
+        self.putu(n_ands)
+
+        for i, f in enumerate(aig.get_and_gates()):
+
+            self.putu( M[ aig.get_and_right(f) ] << 1)
+            self.putu( M[ aig.get_and_left(f) ] )
+
+            M[ f ] = (n_const + n_pis + n_latches + i) << 1
+
+        # Latches
+
+        V = { AIG.INIT_NONDET:0, AIG.INIT_ZERO:2, AIG.INIT_ONE:3 }
+        
+        for ll in aig.get_latches():
+            self.putu( (M[ aig.get_next(ll) ] << 2) | V[ aig.get_init(ll) ] )
+
+        # Properties
+
+        output_pos = list( aig.get_pos_by_type(AIG.OUTPUT) )
+        bad_pos =  list( aig.get_pos_by_type(AIG.BAD_STATES) )
+        constraint_pos =  list( aig.get_pos_by_type(AIG.CONSTRAINT) )
+        fairness_pos =  list( aig.get_pos_by_type(AIG.FAIRNESS) )
+        justice_pos =  list( aig.get_pos_by_type(AIG.JUSTICE) )
+        justice_properties = list( aig.get_justice_properties() )
+
+        if len(bad_pos) == 0 and len(justice_properties)==0 and len(output_pos) > 1:
+            bad_pos = output_pos
+
+        self.putu( len(bad_pos) )
+        for po_id, po_fanin, po_type in bad_pos:
+            self.putu( M[po_fanin] ^ 1 )
+
+        # Fairness
+
+        self.putu(1)
+
+        total = len(justice_pos) + len(justice_properties) * (len(fairness_pos) + 1)
+        self.putu(total)
+
+        for i, po_ids in justice_properties:
+
+            for po_id in po_ids:
+                self.putu( M[ aig.get_po_fanin(po_id) ] )
+
+            for po_id, po_fanin, po_type in fairness_pos:
+                self.putu( M[po_fanin] )
+
+            self.putu(0)
+
+        # Constraints
+
+        self.putu( len(constraint_pos) )
+        for po_id, po_fanin, po_type in constraint_pos:
+            self.putu( M[po_fanin] )
 
 class received_message(object):
 
@@ -346,10 +424,10 @@ class par_engine(par_client_handler):
 
         self.send_message(999999, m)
 
-    def send_netlist_message(self, N):
+    def send_netlist_message(self, aig):
 
         m = message()
-        m.put_netlist(N)
+        m.put_aig(aig)
         self.send_message(message.SEND_NETLIST, m)
 
     def send_param_message(self, s=''):
@@ -407,9 +485,11 @@ def send_json(data, fout=sys.stdout):
 
     send_message(message.JSON, m.data, fout)
 
+
 make_splitter = split.make_splitter
 
-if __name__=='__main__':
+
+if __name__=='__main__' or True:
 
     def f():
 
@@ -433,19 +513,18 @@ if __name__=='__main__':
 
     def build(n):
 
-        N = pyzz.netlist()
-        w = N.add_PI()
+        aig = AIG()
+        w = aig.create_pi()
 
         for i in xrange(n):
-            w = N.add_Flop(next=w)
+            w = aig.create_latch(next=w)
 
-        po = N.add_PO(fanin=w)
-        N.add_property( ~po )
+        po = aig.create_po(w, po_type=AIG.BAD_STATES)
 
-        return N
+        return aig
 
 
-    def run_par(engines, N):
+    def run_par(engines, aig):
 
         bug_free_depth = defaultdict(lambda : -1)
 
@@ -453,8 +532,8 @@ if __name__=='__main__':
 
             timer_uid = s.add_timer(1)
 
-            # for name, args in engines:
-            #     s.fork_handler( executable_engine(s.loop, N, name, args) )
+            for name, args in engines:
+                s.fork_handler( executable_engine(s.loop, aig, name, args) )
             s.fork_handler( forked_engine(s.loop, "xxx", f) )
 
             for uid, res in s:
@@ -488,9 +567,9 @@ if __name__=='__main__':
         ( ',treb -abs', ['bip', '-no-logo', ',treb', '-abs', '@@'] ),
     ]
 
-    N = build(5)
-    # N.write_aiger('xxx.aig')
-    # N = pyzz.netlist.read_aiger('../../build/single/prodcellp2neg.aig')
-    # N = pyzz.netlist.read_aiger('../../build/single/ndista128.aig')
+    aig = build(150)
+    # aig.write_aiger('xxx.aig')
+    # aig = pyzz.netlist.read_aiger('../../build/single/prodcellp2neg.aig')
+    # aig = pyzz.netlist.read_aiger('../../build/single/ndista128.aig')
 
-    run_par(engines, N)
+    run_par(engines, aig)

@@ -346,7 +346,7 @@ proof_command_wrapper_internal( bmcs_prooffunc, "HWMCC", "/bmcs_aiger", 0, multi
 
 def super_deep(aig_filename, old_stdout):
 
-    import pyzz
+    import pyaig
     import par_client
     from collections import defaultdict
 
@@ -392,14 +392,17 @@ def super_deep(aig_filename, old_stdout):
         ( ',bmc', ['bip', ',bmc', '-no-logo', '@@'] ),
     ]
         
-    N1 = pyzz.netlist.read_aiger(aig_filename)
+    aig1 = pyaig.read_aiger(aig_filename)
 
     bug_free_depth = -1
+    
+    armin_limit = os.getenv("ARMIN_LIMIT_BUG_FREE_DEPTH")
+    bug_free_depth_limit = int(armin_limit) if int(armin_limit) > 0 else None
 
     with temp_filename() as simplified_aig, par_client.make_splitter() as s:
 
         for name, args in engines:
-            s.fork_handler( par_client.executable_engine(s.loop, N1, name, args) )
+            s.fork_handler( par_client.executable_engine(s.loop, aig1, name, args) )
         
         s.fork_handler( par_client.forked_engine(s.loop, "&bmcs", lambda : run_bmcs(aig_filename) ) )
 
@@ -411,11 +414,6 @@ def super_deep(aig_filename, old_stdout):
                     par.pre_simp()
                     pyabc.run_command('write_aiger %s'%simplified_aig)
 
-                    # make sure AIG is actually readable
-                    N = pyzz.netlist.read_aiger(simplified_aig)
-                    data = pyzz.marshal_netlist(N)
-                    pyabc.run_command('read_aiger %s'%simplified_aig)
-
             return simplified_aig
 
         simplifier_id = s.fork_one( simplify )
@@ -426,15 +424,16 @@ def super_deep(aig_filename, old_stdout):
 
                 s.fork_handler( par_client.forked_engine(s.loop, "&bmcs-simplified", lambda : run_bmcs(simplified_aig) ) )
                 
-                N = pyzz.netlist.read_aiger(simplified_aig)
+                aig2 = pyaig.read_aiger(aig_filename)
                 for name, args in engines:
-                    s.fork_handler( par_client.executable_engine(s.loop, N, name + '-simplified', args) )
+                    s.fork_handler( par_client.executable_engine(s.loop, aig2, name + '-simplified', args) )
 
             if type(res) == par_client.par_engine.bug_free_depth:
                 
                 if res.depth > bug_free_depth:
+                    if armin_limit is None or bug_free_depth <= bug_free_depth_limit:
+                        print >> old_stdout, 'u%d'%res.depth
                     bug_free_depth = res.depth
-                    print >> old_stdout, 'u%d'%bug_free_depth
 
             elif type(res) == par_client.par_engine.property_result:
                 
