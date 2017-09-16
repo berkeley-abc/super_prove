@@ -155,7 +155,7 @@ def replace_report_result(write_cex=False, bmc_depth=False):
         par.report_bmc_depth = report_bmc_depth
         
         try:
-            yield
+            yield stdout
         finally:
             par.report_result = old_report_result
             #~ par.report_liveness_result = report_liveness_result
@@ -185,7 +185,7 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
             
         aig_filename = os.path.abspath(args[1])
 
-        with replace_report_result(write_cex=write_cex, bmc_depth=bmc_depth):
+        with replace_report_result(write_cex=write_cex, bmc_depth=bmc_depth) as old_stdout:
 
             if options.redirect:
                 pyabc.run_command('/pushredirect %s'%options.redirect)
@@ -200,7 +200,7 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
                 shutil.copyfile(aig_filename, basename)
                 aig_filename = basename
 
-                result = prooffunc(aig_filename)
+                result = prooffunc(aig_filename, old_stdout)
                 
                 par.cex_list = []
             except:
@@ -230,7 +230,7 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
     pyabc.add_abc_command(wrapper, category_name, command_name, change)
 
 def proof_command_wrapper(prooffunc, category_name, command_name, change, multi=False, write_cex=False, bmc_depth=False):
-    def pf(aig_filename):
+    def pf(aig_filename, old_stdout):
         par.read_file_quiet(aig_filename)
         return prooffunc()
     return proof_command_wrapper_internal(pf, category_name, command_name, change, multi, write_cex, bmc_depth)
@@ -242,7 +242,7 @@ proof_command_wrapper(super_prove,  'HWMCC', '/super_prove_aiger',  0, write_cex
 proof_command_wrapper(par.simple,  'HWMCC', '/simple_aiger',  0, write_cex=True, bmc_depth=True)
 proof_command_wrapper(par.mp,  'HWMCC', '/multi_prove_aiger',  0, write_cex=True, bmc_depth=False, multi=True)
 
-def simple_liveness_prooffunc(aig_filename):
+def simple_liveness_prooffunc(aig_filename, old_stdout):
 
     try:
         import liveness
@@ -317,7 +317,7 @@ def frame_done_callback(callback):
     finally:
         pyabc.set_frame_done_callback(old_callback)
 
-def bmcs_prooffunc(aig_filename):
+def bmcs_prooffunc(aig_filename, old_stdout):
     
     def callback(frame, po, result):
         
@@ -330,7 +330,7 @@ def bmcs_prooffunc(aig_filename):
     pyabc.run_command('&get')
 
     with frame_done_callback(callback):
-        pyabc.run_command('&bmcs -v')
+        pyabc.run_command('&bmcs -g')
 
     status = pyabc.prob_status()
 
@@ -342,3 +342,130 @@ def bmcs_prooffunc(aig_filename):
         return 'UNKNOWN'
 
 proof_command_wrapper_internal( bmcs_prooffunc, "HWMCC", "/bmcs_aiger", 0, multi=False, bmc_depth=True, write_cex=True)
+
+
+def super_deep(aig_filename, old_stdout):
+
+    import pyzz
+    import par_client
+    from collections import defaultdict
+
+    def bmcs_engine(aig_filename, old_stdout):
+
+        def callback(frame, po, result):
+            
+            if result == 0:
+                par_client.send_progress(po, 1, frame, fout=old_stdout)
+                old_stdout.flush()
+
+        pyabc.run_command('read_aiger "%s"'%aig_filename)
+        pyabc.run_command('&get')
+
+        with frame_done_callback(callback):
+            pyabc.run_command('&bmcs -g')
+
+        status = pyabc.prob_status()
+
+        if status == pyabc.UNSAT:
+            par_client.send_json(dict(prop_no=0, status='UNSAT'), fout=old_stdout)
+
+        if status == pyabc.SAT:
+            with temp_filename() as fname:
+                pyabc.run_command('write_cex -a %s'%fname)
+                with open(fname, 'r') as fin:
+                    cex = fin.read().split('\n')[:-1]
+            
+            par_client.send_json(dict(prop_no=0, status='SAT', cex=cex), fout=old_stdout)
+
+    def run_bmcs(aig_filename):
+
+        with redirect.save_stdout() as prev_stdout:
+            with redirect.redirect(src=sys.stdout):
+                with redirect.redirect(src=sys.stderr):
+                    bmcs_engine(aig_filename, prev_stdout)
+
+        os._exit(0)
+
+    engines = [
+        ( 'pdr', ['abc', '-b', '-c', '&st; &put; pdr ; send_status'] ),
+        ( 'bmc3', ['abc', '-b', '-c', '&st; &put; bmc3 -a'] ),
+        ( ',bmc', ['bip', ',bmc', '-no-logo', '@@'] ),
+    ]
+        
+    N1 = pyzz.netlist.read_aiger(aig_filename)
+
+    bug_free_depth = -1
+
+    with temp_filename() as simplified_aig, par_client.make_splitter() as s:
+
+        for name, args in engines:
+            s.fork_handler( par_client.executable_engine(s.loop, N1, name, args) )
+        
+        s.fork_handler( par_client.forked_engine(s.loop, "&bmcs", lambda : run_bmcs(aig_filename) ) )
+
+        def simplify():
+
+            with redirect.redirect(src=sys.stdout):
+                with redirect.redirect(src=sys.stderr):
+                    par.read_file_quiet(aig_filename)
+                    par.pre_simp()
+                    pyabc.run_command('write_aiger %s'%simplified_aig)
+
+                    # make sure AIG is actually readable
+                    N = pyzz.netlist.read_aiger(simplified_aig)
+                    data = pyzz.marshal_netlist(N)
+                    pyabc.run_command('read_aiger %s'%simplified_aig)
+
+            return simplified_aig
+
+        simplifier_id = s.fork_one( simplify )
+
+        for uid, res in s:
+
+            if uid == simplifier_id and res == simplified_aig:
+
+                s.fork_handler( par_client.forked_engine(s.loop, "&bmcs-simplified", lambda : run_bmcs(simplified_aig) ) )
+                
+                N = pyzz.netlist.read_aiger(simplified_aig)
+                for name, args in engines:
+                    s.fork_handler( par_client.executable_engine(s.loop, N, name + '-simplified', args) )
+
+            if type(res) == par_client.par_engine.bug_free_depth:
+                
+                if res.depth > bug_free_depth:
+                    bug_free_depth = res.depth
+                    print >> old_stdout, 'u%d'%bug_free_depth
+
+            elif type(res) == par_client.par_engine.property_result:
+                
+                if res.result == 'failed':
+                    print >> old_stdout, '1'
+                    print >> old_stdout, 'b0'
+                    print >> old_stdout, '\n'.join(res.cex)
+                    print >> old_stdout, '.'
+
+                elif res.result == 'proved':
+                    print >> old_stdout, '0'
+                    print >> old_stdout, 'b0'
+                    print >> old_stdout, '.'
+                    
+                break
+
+            elif type(res) == par_client.par_engine.json_result:
+
+                if res.json['status'] == 'SAT':
+                    print >> old_stdout, '1'
+                    print >> old_stdout, 'b0'
+                    print >> old_stdout, '\n'.join(res.json['cex'])
+                    print >> old_stdout, '.'
+
+                elif res.json['status'] == 'UNSAT':
+                    print >> old_stdout, '0'
+                    print >> old_stdout, 'b0'
+                    print >> old_stdout, '.'
+                
+                break
+
+    os._exit(0)
+
+proof_command_wrapper_internal( super_deep, "HWMCC", "/super_deep_aiger", 0, multi=False, bmc_depth=False, write_cex=True)
