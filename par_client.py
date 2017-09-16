@@ -131,7 +131,7 @@ class message(object):
         justice_pos =  list( aig.get_pos_by_type(AIG.JUSTICE) )
         justice_properties = list( aig.get_justice_properties() )
 
-        if len(bad_pos) == 0 and len(justice_properties)==0 and len(output_pos) > 1:
+        if len(bad_pos) == 0 and len(justice_properties)==0 and len(output_pos) > 0:
             bad_pos = output_pos
 
         self.putu( len(bad_pos) )
