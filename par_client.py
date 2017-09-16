@@ -489,7 +489,7 @@ def send_json(data, fout=sys.stdout):
 make_splitter = split.make_splitter
 
 
-if __name__=='__main__' or True:
+if __name__=='__main__' :
 
     def f():
 

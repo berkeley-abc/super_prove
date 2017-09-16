@@ -397,7 +397,7 @@ def super_deep(aig_filename, old_stdout):
     bug_free_depth = -1
     
     armin_limit = os.getenv("ARMIN_LIMIT_BUG_FREE_DEPTH")
-    bug_free_depth_limit = int(armin_limit) if int(armin_limit) > 0 else None
+    bug_free_depth_limit = int(armin_limit) if armin_limit and int(armin_limit) > 0 else None
 
     with temp_filename() as simplified_aig, par_client.make_splitter() as s:
 
@@ -405,6 +405,7 @@ def super_deep(aig_filename, old_stdout):
             s.fork_handler( par_client.executable_engine(s.loop, aig1, name, args) )
         
         s.fork_handler( par_client.forked_engine(s.loop, "&bmcs", lambda : run_bmcs(aig_filename) ) )
+
 
         def simplify():
 
