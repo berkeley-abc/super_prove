@@ -341,6 +341,7 @@ def bmcs_prooffunc(aig_filename, old_stdout):
     else:
         return 'UNKNOWN'
 
+
 proof_command_wrapper_internal( bmcs_prooffunc, "HWMCC", "/bmcs_aiger", 0, multi=False, bmc_depth=True, write_cex=True)
 
 
@@ -399,13 +400,20 @@ def super_deep(aig_filename, old_stdout):
     armin_limit = os.getenv("ARMIN_LIMIT_BUG_FREE_DEPTH")
     bug_free_depth_limit = int(armin_limit) if armin_limit and int(armin_limit) > 0 else None
 
+    printable_types = set([
+        par_client.par_engine.bug_free_depth,
+        par_client.par_engine.property_result,
+        par_client.par_engine.json_result,
+        par_client.par_engine.start_result,
+        par_client.par_engine.abort_result
+    ])
+
     with temp_filename() as simplified_aig, par_client.make_splitter() as s:
 
         for name, args in engines:
             s.fork_handler( par_client.executable_engine(s.loop, aig1, name, args) )
         
         s.fork_handler( par_client.forked_engine(s.loop, "&bmcs", lambda : run_bmcs(aig_filename) ) )
-
 
         def simplify():
 
@@ -420,6 +428,9 @@ def super_deep(aig_filename, old_stdout):
         simplifier_id = s.fork_one( simplify )
 
         for uid, res in s:
+
+            if type(res) in printable_types:
+                print uid, res
 
             if uid == simplifier_id and res == simplified_aig:
 
@@ -437,19 +448,19 @@ def super_deep(aig_filename, old_stdout):
                     bug_free_depth = res.depth
 
             elif type(res) == par_client.par_engine.property_result:
-                
+
                 if res.result == 'failed':
                     print >> old_stdout, '1'
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '\n'.join(res.cex)
                     print >> old_stdout, '.'
+                    break
 
                 elif res.result == 'proved':
                     print >> old_stdout, '0'
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '.'
-                    
-                break
+                    break
 
             elif type(res) == par_client.par_engine.json_result:
 
@@ -458,14 +469,15 @@ def super_deep(aig_filename, old_stdout):
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '\n'.join(res.json['cex'])
                     print >> old_stdout, '.'
+                    break
 
                 elif res.json['status'] == 'UNSAT':
                     print >> old_stdout, '0'
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '.'
-                
-                break
+                    break
 
     os._exit(0)
+
 
 proof_command_wrapper_internal( super_deep, "HWMCC", "/super_deep_aiger", 0, multi=False, bmc_depth=False, write_cex=True)

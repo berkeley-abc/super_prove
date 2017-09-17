@@ -81,85 +81,7 @@ class message(object):
         self.data.extend(x.data)
 
     def put_aig(self, aig):
-
-        M = AIG.fmap(negate_if_negated=lambda f, c: f^c)
-
-        n_const = 2
-        M[ AIG.get_const1() ] = 2
-
-        # PIs
-
-        n_pis = aig.n_pis()
-        self.putu(n_pis)
-
-        for i, pi in enumerate(aig.get_pis()):
-            M[ pi ] = (n_const + i) << 1
-
-        # Latches
-
-        n_latches = aig.n_latches()
-        self.putu(n_latches)
-
-        for i, ll in enumerate(aig.get_latches()):
-            M[ ll ] = (n_const + n_pis + i) << 1
-
-        # Gates
-
-        n_ands = aig.n_ands()   
-        self.putu(n_ands)
-
-        for i, f in enumerate(aig.get_and_gates()):
-
-            self.putu( M[ aig.get_and_right(f) ] << 1)
-            self.putu( M[ aig.get_and_left(f) ] )
-
-            M[ f ] = (n_const + n_pis + n_latches + i) << 1
-
-        # Latches
-
-        V = { AIG.INIT_NONDET:0, AIG.INIT_ZERO:2, AIG.INIT_ONE:3 }
-        
-        for ll in aig.get_latches():
-            self.putu( (M[ aig.get_next(ll) ] << 2) | V[ aig.get_init(ll) ] )
-
-        # Properties
-
-        output_pos = list( aig.get_pos_by_type(AIG.OUTPUT) )
-        bad_pos =  list( aig.get_pos_by_type(AIG.BAD_STATES) )
-        constraint_pos =  list( aig.get_pos_by_type(AIG.CONSTRAINT) )
-        fairness_pos =  list( aig.get_pos_by_type(AIG.FAIRNESS) )
-        justice_pos =  list( aig.get_pos_by_type(AIG.JUSTICE) )
-        justice_properties = list( aig.get_justice_properties() )
-
-        if len(bad_pos) == 0 and len(justice_properties)==0 and len(output_pos) > 0:
-            bad_pos = output_pos
-
-        self.putu( len(bad_pos) )
-        for po_id, po_fanin, po_type in bad_pos:
-            self.putu( M[po_fanin] ^ 1 )
-
-        # Fairness
-
-        self.putu(1)
-
-        total = len(justice_pos) + len(justice_properties) * (len(fairness_pos) + 1)
-        self.putu(total)
-
-        for i, po_ids in justice_properties:
-
-            for po_id in po_ids:
-                self.putu( M[ aig.get_po_fanin(po_id) ] )
-
-            for po_id, po_fanin, po_type in fairness_pos:
-                self.putu( M[po_fanin] )
-
-            self.putu(0)
-
-        # Constraints
-
-        self.putu( len(constraint_pos) )
-        for po_id, po_fanin, po_type in constraint_pos:
-            self.putu( M[po_fanin] )
+        self.data.extend(pyaig.marshal_aiger(aig))
 
 class received_message(object):
 
@@ -307,6 +229,9 @@ class par_engine(par_client_handler):
     property_result = namedtuple("property_result", ["engine", "prop_no", "result", "depth", "cex"])
     json_result = namedtuple("json_result", ["engine", "json"])
 
+    start_result = namedtuple("start_result", ["engine"])
+    abort_result = namedtuple("abort_result", ["engine", "reason"])
+
     def __init__(self, loop, name, f):
         super(par_engine, self).__init__(loop, f)
         self.name = name
@@ -319,7 +244,7 @@ class par_engine(par_client_handler):
         m = received_message(pcontent)
 
         if ptype == message.ABORT:
-            print "ABORT(%s): %s"%(self.name, m.get_remaining())
+            self.on_abort( m.get_remaining() )
 
         elif ptype == message.BIP_PROGRESS:
           
@@ -377,6 +302,14 @@ class par_engine(par_client_handler):
         elif ptype == message.JSON:
 
             self.on_result_json( json.loads( m.get_remaining() ) )
+
+    def on_start(self):
+        # print "STARTED(%s)"%(self.name)
+        self.loop.add_result( (self.token, False, par_engine.start_result(self.name)) )
+
+    def on_abort(self, reason):
+        # print "ABORT(%s): %s"%(self.name, reason)
+        self.loop.add_result( (self.token, False, par_engine.abort_result(self.name, reason)) )
 
     def on_result_json(self, data):
         # print 'RESULT(%s): JSON ", data
@@ -449,6 +382,8 @@ class executable_engine(par_engine):
         self.N = N
 
     def on_start(self):
+        super(executable_engine, self).on_start()
+
         self.send_start_message()
         self.send_netlist_message(self.N)
         self.send_param_message()
