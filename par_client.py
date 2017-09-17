@@ -117,9 +117,8 @@ class received_message(object):
         return values
 
     def get_vec_bool_as_cex(self):
-        def s(c):
-            return '1' if c==3 else '0'
-        return "".join( s(v) for v in self.get_vec_bool() )
+        V = {0: '0', 1:'0', 2:'0', 3:'1'}
+        return "".join( V[v] for v in self.get_vec_bool() )
 
     def get_cex(self):
 

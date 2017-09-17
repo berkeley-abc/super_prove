@@ -456,7 +456,7 @@ def super_deep(aig_filename, old_stdout):
 
                 if res.result == 'failed':
         
-                    if res.engine.endswith('-simplified'):
+                    if res.engine.endswith('-simplified') or res.engine.startswith(',bmc'):
                         continue
 
                     print >> old_stdout, '1'
@@ -475,7 +475,7 @@ def super_deep(aig_filename, old_stdout):
 
                 if res.json['status'] == 'SAT':
         
-                    if res.engine.endswith('-simplified'):
+                    if res.engine.endswith('-simplified') or res.engine.startswith(',bmc'):
                         continue
 
                     print >> old_stdout, '1'
