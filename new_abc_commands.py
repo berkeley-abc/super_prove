@@ -161,7 +161,7 @@ def replace_report_result(write_cex=False, bmc_depth=False):
             #~ par.report_liveness_result = report_liveness_result
             par.report_bmc_depth = old_report_bmc_depth
 
-def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False, write_cex=False, bmc_depth=False):
+def proof_command_wrapper_internal(prooffunc, category_name, command_name, change, multi=False, write_cex=False, bmc_depth=False, do_reporting=True):
 
     def wrapper(argv):
         
@@ -204,10 +204,12 @@ def proof_command_wrapper_internal(prooffunc, category_name, command_name, chang
                 
                 par.cex_list = []
             except:
+                import traceback
+                traceback.print_exc()
                 result = None
 
-            if not multi:
-                
+            if do_reporting and not multi:
+
                 if result=="SAT":
                     par.report_result(0,1)
                 elif result=="UNSAT":
@@ -408,6 +410,8 @@ def super_deep(aig_filename, old_stdout):
         par_client.par_engine.abort_result
     ])
 
+    simplified_uids = set()
+
     with temp_filename() as simplified_aig, par_client.make_splitter() as s:
 
         for name, args in engines:
@@ -426,6 +430,7 @@ def super_deep(aig_filename, old_stdout):
             return simplified_aig
 
         simplifier_id = s.fork_one( simplify )
+
 
         for uid, res in s:
 
@@ -450,6 +455,10 @@ def super_deep(aig_filename, old_stdout):
             elif type(res) == par_client.par_engine.property_result:
 
                 if res.result == 'failed':
+        
+                    if res.engine.endswith('-simplified'):
+                        continue
+
                     print >> old_stdout, '1'
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '\n'.join(res.cex)
@@ -465,6 +474,10 @@ def super_deep(aig_filename, old_stdout):
             elif type(res) == par_client.par_engine.json_result:
 
                 if res.json['status'] == 'SAT':
+        
+                    if res.engine.endswith('-simplified'):
+                        continue
+
                     print >> old_stdout, '1'
                     print >> old_stdout, 'b0'
                     print >> old_stdout, '\n'.join(res.json['cex'])
@@ -480,4 +493,4 @@ def super_deep(aig_filename, old_stdout):
     os._exit(0)
 
 
-proof_command_wrapper_internal( super_deep, "HWMCC", "/super_deep_aiger", 0, multi=False, bmc_depth=False, write_cex=True)
+proof_command_wrapper_internal( super_deep, "HWMCC", "/super_deep_aiger", 0, multi=False, bmc_depth=False, write_cex=True, do_reporting=False)
