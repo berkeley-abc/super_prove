@@ -441,7 +441,7 @@ def super_deep(aig_filename, old_stdout):
 
                 s.fork_handler( par_client.forked_engine(s.loop, "&bmcs-simplified", lambda : run_bmcs(simplified_aig) ) )
                 
-                aig2 = pyaig.read_aiger(aig_filename)
+                aig2 = pyaig.read_aiger(simplified_aig)
                 for name, args in engines:
                     s.fork_handler( par_client.executable_engine(s.loop, aig2, name + '-simplified', args) )
 
